@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@theme {
+  --color-slate-850: #1e293b;
+  --color-slate-900: #0f172a;
+  --color-slate-950: #020617;
+  --color-primary-400: #818cf8;
+  --color-primary-500: #6366f1;
+  --color-primary-600: #4f46e5;
+  --font-sans: 'Inter', sans-serif;
+}
+
+body {
+  background-color: #020617;
+  color: #e2e8f0;
+}
+
+.hidden-view { display: none !important; }
+.drawer { transform: translateX(100%); transition: transform 0.3s ease-in-out; }
+.drawer.open { transform: translateX(0); }
+.nav-btn.active { background-color: rgba(99, 102, 241, 0.1); color: white; border-right: 3px solid #6366f1; }
+.nav-btn { border-right: 3px solid transparent; }
+.input-dark { background-color: #0f172a; border-color: #1e293b; }
+.input-dark:focus { border-color: #6366f1; }
