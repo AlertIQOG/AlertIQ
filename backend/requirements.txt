@@ -11,3 +11,7 @@ pytest-asyncio
 httpx
 ruff
 mypy
+
+# Database
+sqlmodel
+psycopg2-binary

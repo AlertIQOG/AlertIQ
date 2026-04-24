@@ -14,8 +14,10 @@ class Settings(BaseSettings):
     # CORS - comma-separated list of allowed origins
     ALLOWED_ORIGINS: list[str] = ["http://localhost:3000"]
 
-    # Future: Database, Auth, etc.
-    # DATABASE_URL: str = ""
+    # Database
+    DATABASE_URL: str
+
+    # Future: Auth, etc.
     # SECRET_KEY: str = ""
 
     model_config = SettingsConfigDict(
