@@ -1,0 +1,13 @@
+# Web framework
+fastapi
+uvicorn[standard]
+
+# Configuration & validation
+pydantic-settings
+
+# Testing & Linting
+pytest
+pytest-asyncio
+httpx
+ruff
+mypy
