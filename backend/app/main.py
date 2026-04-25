@@ -1,23 +1,29 @@
+"""
+AlertIQ application factory.
+
+Creates, configures, and returns the FastAPI application instance.
+"""
+
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import router as api_v1_router
 from app.core.config import settings
+from app.core.exceptions import register_exception_handlers
 from app.core.logging import logger, setup_logging
 
-# Initialize central logging first with configuration from settings
 setup_logging(debug=settings.DEBUG)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
-    logger.info("🚀 %s v%s is starting up...", settings.APP_NAME, settings.APP_VERSION)
+    """Startup / shutdown lifecycle hook."""
+    logger.info("%s v%s starting up...", settings.APP_NAME, settings.APP_VERSION)
     yield
-    # Shutdown
-    logger.info("🛑 %s is shutting down.", settings.APP_NAME)
+    logger.info("%s shutting down.", settings.APP_NAME)
 
 
 app = FastAPI(
@@ -28,6 +34,23 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log every request with method, path, status code, and duration."""
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000
+    logger.info(
+        "%s %s -> %s (%.0fms)",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+    )
+    return response
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
@@ -36,12 +59,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount versioned API routes
+register_exception_handlers(app)
+
 app.include_router(api_v1_router, prefix="/api/v1")
 
 
 @app.get("/", tags=["Root"])
 async def root():
+    """Service information / landing page."""
     return {
         "service": settings.APP_NAME,
         "version": settings.APP_VERSION,
