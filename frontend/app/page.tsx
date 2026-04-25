@@ -1,3 +1,5 @@
+import AlertsTable from './components/AlertsTable';
+
 export default function Home() {
   return (
     <>
@@ -12,15 +14,15 @@ export default function Home() {
           </div>
           <nav className="px-3 space-y-2">
             <button className="nav-btn active w-full flex items-center px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors text-left group">
-              <i className="fas fa-satellite-dish w-6 group-hover:text-white mr-3"></i>
+              <i className="fas fa-satellite-dish w-5 text-center mr-2 group-hover:text-white"></i>
               <span className="font-medium">Alerts Feed</span>
             </button>
             <button className="nav-btn w-full flex items-center px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors text-left group">
-              <i className="fas fa-briefcase-medical w-6 group-hover:text-white mr-3"></i>
+              <i className="fas fa-briefcase-medical w-5 text-center mr-2 group-hover:text-white"></i>
               <span className="font-medium">Incidents Management</span>
             </button>
             <button className="nav-btn w-full flex items-center px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors text-left group">
-              <i className="fas fa-code-branch w-6 group-hover:text-white mr-3"></i>
+              <i className="fas fa-code-branch w-5 text-center mr-2 group-hover:text-white"></i>
               <span className="font-medium">Correlation Rules</span>
             </button>
           </nav>
@@ -51,8 +53,8 @@ export default function Home() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-6 flex items-center justify-center">
-          <p className="text-slate-500 text-lg">The UI is successfully connected!</p>
+        <div className="flex-1 overflow-y-auto p-6">
+          <AlertsTable />
         </div>
       </main>
     </>
