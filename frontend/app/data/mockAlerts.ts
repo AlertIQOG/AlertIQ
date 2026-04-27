@@ -1,0 +1,35 @@
+export const mockAlerts = [
+  {
+    id: "1",
+    severity: "HIGH",
+    status: "FIRING",
+    title: "Aggregated: DB Performance Degradation",
+    rule: "DB High CPU + Errors",
+    environment: "PROD",
+    source: "System",
+    time: "2m ago",
+    isAggregated: true,
+  },
+  {
+    id: "2",
+    severity: "WARN",
+    status: "ACK",
+    title: "Consumer Lag Rising",
+    rule: "Topic: orders-stream",
+    environment: "STG",
+    source: "Kafka",
+    time: "15m ago",
+    isAggregated: false,
+  },
+  {
+    id: "3",
+    severity: "CRITICAL",
+    status: "FIRING",
+    title: "Payment Gateway Timeout",
+    rule: "API 504 errors",
+    environment: "PROD",
+    source: "External",
+    time: "Just now",
+    isAggregated: false,
+  }
+];

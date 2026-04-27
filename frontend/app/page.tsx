@@ -1,6 +1,32 @@
+"use client";
+
+import { useState } from 'react';
+import AlertsTable from './components/AlertsTable';
+import { mockAlerts } from './data/mockAlerts';
+
 export default function Home() {
+  // Define state for each filter
+  const [sevFilter, setSevFilter] = useState('ALL');
+  const [envFilter, setEnvFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+
+  // Filter the alerts based on the selected filters
+  const filteredAlerts = mockAlerts.filter(alert => {
+    const matchSev = sevFilter === 'ALL' || alert.severity === sevFilter;
+    const matchEnv = envFilter === 'ALL' || alert.environment === envFilter;
+    const matchStatus = statusFilter === 'ALL' || alert.status === statusFilter;
+    return matchSev && matchEnv && matchStatus;
+  });
+
+  // Reset all filters to default
+  const handleReset = () => {
+    setSevFilter('ALL');
+    setEnvFilter('ALL');
+    setStatusFilter('ALL');
+  };
+
   return (
-    <>
+    <div className="flex h-screen w-full overflow-hidden">
       {/* Sidebar */}
       <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between shrink-0 z-20">
         <div>
@@ -12,15 +38,15 @@ export default function Home() {
           </div>
           <nav className="px-3 space-y-2">
             <button className="nav-btn active w-full flex items-center px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors text-left group">
-              <i className="fas fa-satellite-dish w-6 group-hover:text-white"></i>
+              <i className="fas fa-satellite-dish w-5 text-center mr-2 group-hover:text-white"></i>
               <span className="font-medium">Alerts Feed</span>
             </button>
             <button className="nav-btn w-full flex items-center px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors text-left group">
-              <i className="fas fa-briefcase-medical w-6 group-hover:text-white"></i>
+              <i className="fas fa-briefcase-medical w-5 text-center mr-2 group-hover:text-white"></i>
               <span className="font-medium">Incidents Management</span>
             </button>
             <button className="nav-btn w-full flex items-center px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors text-left group">
-              <i className="fas fa-code-branch w-6 group-hover:text-white"></i>
+              <i className="fas fa-code-branch w-5 text-center mr-2 group-hover:text-white"></i>
               <span className="font-medium">Correlation Rules</span>
             </button>
           </nav>
@@ -51,10 +77,67 @@ export default function Home() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-6 flex items-center justify-center">
-             <p className="text-slate-500 text-lg">The UI is successfully connected!</p>
+        <div className="flex-1 overflow-y-auto p-6">
+          
+          {/* Filter Bar */}
+          <div className="flex items-center gap-3 mb-6 p-1">
+            <div className="text-xs font-bold text-slate-500 uppercase mr-2"><i className="fas fa-filter mr-1"></i> Filters:</div>
+            
+            <div className="relative group">
+              <select 
+                value={sevFilter} 
+                onChange={(e) => setSevFilter(e.target.value)}
+                className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg pl-3 pr-8 py-2 text-xs outline-none appearance-none cursor-pointer hover:border-slate-500 transition shadow-sm"
+              >
+                <option value="ALL">All Severities</option>
+                <option value="CRITICAL">Critical</option>
+                <option value="HIGH">High</option>
+                <option value="WARN">Warning</option>
+              </select>
+              <i className="fas fa-chevron-down absolute right-3 top-2.5 text-[10px] text-slate-500 pointer-events-none"></i>
+            </div>
+            
+            <div className="relative group">
+              <select 
+                value={envFilter} 
+                onChange={(e) => setEnvFilter(e.target.value)}
+                className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg pl-3 pr-8 py-2 text-xs outline-none appearance-none cursor-pointer hover:border-slate-500 transition shadow-sm"
+              >
+                <option value="ALL">All Environments</option>
+                <option value="PROD">Production</option>
+                <option value="STG">Staging</option>
+              </select>
+              <i className="fas fa-chevron-down absolute right-3 top-2.5 text-[10px] text-slate-500 pointer-events-none"></i>
+            </div>
+
+            <div className="relative group">
+              <select 
+                value={statusFilter} 
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg pl-3 pr-8 py-2 text-xs outline-none appearance-none cursor-pointer hover:border-slate-500 transition shadow-sm"
+              >
+                <option value="ALL">All Statuses</option>
+                <option value="FIRING">Firing</option>
+                <option value="ACK">Acknowledged</option>
+              </select>
+              <i className="fas fa-chevron-down absolute right-3 top-2.5 text-[10px] text-slate-500 pointer-events-none"></i>
+            </div>
+            
+            <div className="h-6 w-px bg-slate-800 mx-2"></div>
+            
+            <button 
+              onClick={handleReset}
+              className="text-slate-400 hover:text-white text-xs font-medium px-2 transition"
+            >
+              Reset
+            </button>
+          </div>
+
+          {/* Render the filtered alerts in the table */}
+          <AlertsTable alerts={filteredAlerts} />
+          
         </div>
       </main>
-    </>
+    </div>
   );
 }
