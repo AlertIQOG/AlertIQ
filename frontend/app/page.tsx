@@ -1,24 +1,40 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AlertsTable from './components/AlertsTable';
-import { mockAlerts } from './data/mockAlerts';
+import { fetchAlerts } from './services/alertsApi';
+import { Alert } from './types/alert';
 
 export default function Home() {
-  // Define state for each filter
+  // States for filters
   const [sevFilter, setSevFilter] = useState('ALL');
   const [envFilter, setEnvFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  
+  // State for alerts data and loading status
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Filter the alerts based on the selected filters
-  const filteredAlerts = mockAlerts.filter(alert => {
+  // Fetching the data when the page loads
+  useEffect(() => {
+    const loadAlerts = async () => {
+      setIsLoading(true);
+      const data = await fetchAlerts(0, 100); // Fetching up to 100 alerts
+      setAlerts(data);
+      setIsLoading(false);
+    };
+
+    loadAlerts();
+  }, []); // Empty dependency array means this runs once on mount
+
+  // Logic for local filtering (adapted for backend fields)
+  const filteredAlerts = alerts.filter(alert => {
     const matchSev = sevFilter === 'ALL' || alert.severity === sevFilter;
-    const matchEnv = envFilter === 'ALL' || alert.environment === envFilter;
+    const matchEnv = envFilter === 'ALL' || alert.region === envFilter; // Using region as environment
     const matchStatus = statusFilter === 'ALL' || alert.status === statusFilter;
     return matchSev && matchEnv && matchStatus;
   });
 
-  // Reset all filters to default
   const handleReset = () => {
     setSevFilter('ALL');
     setEnvFilter('ALL');
@@ -51,7 +67,6 @@ export default function Home() {
             </button>
           </nav>
         </div>
-        
         <div className="p-4 border-t border-slate-800 bg-slate-900/50">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -68,7 +83,7 @@ export default function Home() {
         </div>
       </aside>
 
-      {/* Main Content Area */}
+      {/* Main Content */}
       <main className="flex-1 relative flex flex-col h-full overflow-hidden bg-slate-950">
         <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/80 backdrop-blur">
           <div className="flex items-center gap-2">
@@ -79,7 +94,7 @@ export default function Home() {
 
         <div className="flex-1 overflow-y-auto p-6">
           
-          {/* Filter Bar */}
+          {/* Filters Bar */}
           <div className="flex items-center gap-3 mb-6 p-1">
             <div className="text-xs font-bold text-slate-500 uppercase mr-2"><i className="fas fa-filter mr-1"></i> Filters:</div>
             
@@ -90,9 +105,10 @@ export default function Home() {
                 className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg pl-3 pr-8 py-2 text-xs outline-none appearance-none cursor-pointer hover:border-slate-500 transition shadow-sm"
               >
                 <option value="ALL">All Severities</option>
-                <option value="CRITICAL">Critical</option>
-                <option value="HIGH">High</option>
-                <option value="WARN">Warning</option>
+                <option value="Critical">Critical</option>
+                <option value="Error">Error</option>
+                <option value="Warning">Warning</option>
+                <option value="Info">Info</option>
               </select>
               <i className="fas fa-chevron-down absolute right-3 top-2.5 text-[10px] text-slate-500 pointer-events-none"></i>
             </div>
@@ -103,9 +119,9 @@ export default function Home() {
                 onChange={(e) => setEnvFilter(e.target.value)}
                 className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg pl-3 pr-8 py-2 text-xs outline-none appearance-none cursor-pointer hover:border-slate-500 transition shadow-sm"
               >
-                <option value="ALL">All Environments</option>
-                <option value="PROD">Production</option>
-                <option value="STG">Staging</option>
+                <option value="ALL">All Regions</option>
+                <option value="PROD">PROD</option>
+                <option value="STG">STG</option>
               </select>
               <i className="fas fa-chevron-down absolute right-3 top-2.5 text-[10px] text-slate-500 pointer-events-none"></i>
             </div>
@@ -117,8 +133,9 @@ export default function Home() {
                 className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg pl-3 pr-8 py-2 text-xs outline-none appearance-none cursor-pointer hover:border-slate-500 transition shadow-sm"
               >
                 <option value="ALL">All Statuses</option>
-                <option value="FIRING">Firing</option>
-                <option value="ACK">Acknowledged</option>
+                <option value="Open">Open</option>
+                <option value="In progress">In Progress</option>
+                <option value="Solved">Solved</option>
               </select>
               <i className="fas fa-chevron-down absolute right-3 top-2.5 text-[10px] text-slate-500 pointer-events-none"></i>
             </div>
@@ -133,8 +150,15 @@ export default function Home() {
             </button>
           </div>
 
-          {/* Render the filtered alerts in the table */}
-          <AlertsTable alerts={filteredAlerts} />
+          {/* Conditional Rendering: Loading vs Table */}
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center h-64 text-slate-500">
+              <i className="fas fa-circle-notch fa-spin text-3xl mb-4 text-indigo-500"></i>
+              <p>Connecting to backend...</p>
+            </div>
+          ) : (
+            <AlertsTable alerts={filteredAlerts} />
+          )}
           
         </div>
       </main>
