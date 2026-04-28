@@ -1,0 +1,25 @@
+# Grafana provisioning — contact point that sends webhooks to AlertIQ.
+#
+# After starting the stack, you still need to:
+#   1. Create a Source in AlertIQ (POST /api/v1/sources)
+#   2. Update the webhook URL below with the real source_id
+#   3. Create an alert rule in Grafana UI that uses this contact point
+#
+# The URL uses host.docker.internal so Grafana (inside Docker) can
+# reach the AlertIQ backend running on the host machine.
+
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: AlertIQ Webhook
+    receivers:
+      - uid: alertiq-webhook
+        type: webhook
+        settings:
+          # ⚠ Replace <SOURCE_ID> with a real source UUID after creating one via:
+          #   curl -X POST http://localhost:8000/api/v1/sources \
+          #     -H "Content-Type: application/json" \
+          #     -d '{"name": "Grafana Dev", "provider_type": "grafana"}'
+          url: "http://host.docker.internal:8000/api/v1/ingest/grafana/1d625724-8d0b-4aac-8d7d-0a102c9914a0"
+          httpMethod: POST

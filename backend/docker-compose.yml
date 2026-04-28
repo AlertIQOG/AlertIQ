@@ -1,0 +1,52 @@
+# ─── AlertIQ Dev Stack ─────────────────────────────────────────────
+# Spins up PostgreSQL + Grafana for testing the webhook ingest flow.
+#
+# Usage:
+#   docker compose up -d
+#   Then start the AlertIQ backend locally:
+#     uvicorn app.main:app --reload
+#
+# Grafana UI:  http://localhost:3001  (admin / admin)
+# PostgreSQL:  localhost:5432  (alertiq / alertiq / alertiq)
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: alertiq-postgres
+    environment:
+      POSTGRES_USER: alertiq
+      POSTGRES_PASSWORD: alertiq
+      POSTGRES_DB: alertiq
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alertiq"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Grafana ─────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.6.0
+    container_name: alertiq-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      # Allow Grafana to send webhooks to the host machine
+      GF_UNIFIED_ALERTING_ENABLED: "true"
+      GF_ALERTING_ENABLED: "false"
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  grafana_data:
