@@ -1,0 +1,12 @@
+# Grafana provisioning — notification policies.
+# Routes all alerts to the AlertIQ webhook contact point.
+
+apiVersion: 1
+
+policies:
+  - orgId: 1
+    receiver: AlertIQ Webhook
+    group_by: ["alertname"]
+    group_wait: 5s
+    group_interval: 10s
+    repeat_interval: 1h
