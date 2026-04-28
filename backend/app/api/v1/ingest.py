@@ -18,6 +18,7 @@ from app.api.v1.dependencies import DbSession
 from app.core.exceptions import ConflictError, NotFoundError
 from app.models.alert import Alert
 from app.providers.grafana import GrafanaWebhook, grafana_normalizer
+from app.providers.prometheus import PrometheusWebhook, prometheus_normalizer
 from app.services.alert import alert_service
 from app.services.source import source_service
 
@@ -80,4 +81,51 @@ def ingest_grafana(
         skipped,
     )
 
+    return {"created": created, "skipped": skipped}
+
+
+@router.post(
+    "/prometheus/{source_id}",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Ingest alerts from Prometheus Alertmanager",
+    response_description="Accepted — returns counts of created and skipped alerts.",
+)
+def ingest_prometheus(
+    *,
+    session: DbSession,
+    source_id: uuid.UUID,
+    payload: PrometheusWebhook,
+) -> dict:
+    """
+    Receive a Prometheus Alertmanager webhook and persist the alerts.
+    """
+    source = source_service.get(session, id=source_id)
+    if source is None:
+        raise NotFoundError("Source", str(source_id))
+
+    alert_creates = prometheus_normalizer.normalize(source_id, payload)
+
+    created = 0
+    skipped = 0
+    for alert_create in alert_creates:
+        db_obj = Alert.model_validate(alert_create.model_dump())
+        try:
+            alert_service.create(session, obj_in=db_obj)
+            created += 1
+        except ConflictError:
+            logger.info(
+                "Duplicate alert skipped — source=%s fingerprint=%s external_id=%s",
+                source_id,
+                alert_create.extra_fields.get("fingerprint", "?"),
+                alert_create.external_id,
+            )
+            skipped += 1
+
+    logger.info(
+        "Prometheus ingest complete — source=%s total=%d created=%d skipped=%d",
+        source_id,
+        len(alert_creates),
+        created,
+        skipped,
+    )
     return {"created": created, "skipped": skipped}
