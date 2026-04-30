@@ -29,7 +29,7 @@ References:
 import uuid
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.alert import AlertSeverity, AlertStatus
 from app.schemas.alert import AlertCreate
@@ -66,6 +66,16 @@ class GrafanaAlert(BaseModel):
     fingerprint: str = ""
     values: dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("labels", "annotations", mode="before")
+    @classmethod
+    def _coerce_str_dict(cls, v: Any) -> dict:
+        return v or {}
+
+    @field_validator("values", mode="before")
+    @classmethod
+    def _coerce_any_dict(cls, v: Any) -> dict:
+        return v or {}
+
 
 class GrafanaWebhook(BaseModel):
     """Top-level Grafana Alertmanager webhook payload."""
@@ -76,6 +86,11 @@ class GrafanaWebhook(BaseModel):
     commonAnnotations: dict[str, str] = Field(default_factory=dict)
     externalURL: str = ""
     groupLabels: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("alerts", "commonLabels", "commonAnnotations", "groupLabels", mode="before")
+    @classmethod
+    def _coerce_null(cls, v: Any) -> Any:
+        return v or ([] if isinstance(v, list) else {})
 
 
 # ─── Normalizer ─────────────────────────────────────────────────────

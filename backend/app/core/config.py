@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: list[str] = ["http://localhost:3000"]
 
     # Database
-    DATABASE_URL: str
+    DATABASE_URL: str = "postgresql://alertiq:alertiq@localhost:5432/alertiq"
 
     # Future: Auth, etc.
     # SECRET_KEY: str = ""
