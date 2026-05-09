@@ -14,7 +14,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, status
 
-from app.api.v1.dependencies import DbSession, PaginationParams
+from app.api.v1.dependencies import AlertFilterParams, DbSession, PaginationParams
 from app.core.exceptions import NotFoundError
 from app.models.alert import Alert
 from app.schemas.alert import AlertCreate, AlertRead, AlertUpdate
@@ -36,18 +36,19 @@ def list_alerts(
     *,
     session: DbSession,
     pagination: PaginationParams = Depends(),
-    source_id: uuid.UUID | None = None,
+    filters: AlertFilterParams = Depends(),
 ) -> list[AlertRead]:
-    """List alerts with optional ``source_id`` filter and pagination."""
-    if source_id:
-        return alert_service.get_by_source(
-            session,
-            source_id=source_id,
-            skip=pagination.skip,
-            limit=pagination.limit,
-        )
-    return alert_service.get_multi(
-        session, skip=pagination.skip, limit=pagination.limit
+    """
+    List alerts with optional server-side filtering and pagination.
+
+    All filter parameters are optional and combined with AND logic.
+    Pagination (``skip``/``limit``) is applied **after** filtering.
+    """
+    return alert_service.get_filtered(
+        session,
+        filters=filters.to_dict(),
+        skip=pagination.skip,
+        limit=pagination.limit,
     )
 @router.get("/{alert_id}", response_model=AlertRead)
 def get_alert(*, session: DbSession, alert_id: uuid.UUID) -> AlertRead:

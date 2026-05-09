@@ -18,6 +18,8 @@ class AlertService(CRUDBase[Alert]):
       - ``create`` is overridden to catch unique-constraint violations
         and raise a domain-level ``ConflictError`` (NOT an HTTPException).
       - ``get_by_source`` adds a filtered query for a specific provider.
+      - Inherits ``get_filtered`` from ``CRUDBase`` for dynamic,
+        introspection-based server-side filtering.
     """
 
     def get_by_source(
@@ -57,3 +59,4 @@ class AlertService(CRUDBase[Alert]):
 
 
 alert_service = AlertService(Alert)
+
