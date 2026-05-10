@@ -6,26 +6,31 @@ import { fetchAlerts } from './services/alertsApi';
 import { Alert } from './types/alert';
 
 export default function Home() {
-  // States for filters
+  // State for filters
   const [sevFilter, setSevFilter] = useState('ALL');
   const [envFilter, setEnvFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   
-  // State for alerts data and loading status
+  // State for alerts data and loading indicators
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true); // for initial loading only
+  const [isFetching, setIsFetching] = useState(false); // for all network requests triggered by filter changes
 
-  // Fetch alerts from backend whenever filters change
+  // fetching data from the server (Server-Side Filtering)
   useEffect(() => {
     const loadAlerts = async () => {
-      setIsLoading(true);
+      setIsFetching(true);
+      
+      // Calling the API with the current filters. The API will return only the relevant data based on these filters, so we don't need to do any client-side filtering here.
       const data = await fetchAlerts(0, 100, sevFilter, statusFilter, envFilter);
+      
       setAlerts(data);
-      setIsLoading(false);
+      setIsFetching(false);
+      setIsInitialLoading(false);
     };
 
     loadAlerts();
-  }, [sevFilter, statusFilter, envFilter]); // Refetch when any filter changes
+  }, [sevFilter, statusFilter, envFilter]); // Re-fetch data whenever any of the filters change
 
   const handleReset = () => {
     setSevFilter('ALL');
@@ -59,6 +64,7 @@ export default function Home() {
             </button>
           </nav>
         </div>
+        
         <div className="p-4 border-t border-slate-800 bg-slate-900/50">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -68,7 +74,7 @@ export default function Home() {
                 <div className="text-[10px] text-slate-500">Admin</div>
               </div>
             </div>
-            <button className="text-slate-400 hover:text-white transition p-2 rounded-full hover:bg-slate-800" title="Settings">
+            <button className="text-slate-400 hover:text-white transition p-2 rounded-full hover:bg-slate-800">
               <i className="fas fa-cog text-lg"></i>
             </button>
           </div>
@@ -80,7 +86,7 @@ export default function Home() {
         <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/80 backdrop-blur">
           <div className="flex items-center gap-2">
             <h1 className="text-white font-medium text-lg">Alerts Feed</h1>
-            <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">Incoming Stream</span>
+            <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">Live API Data</span>
           </div>
         </header>
 
@@ -90,66 +96,59 @@ export default function Home() {
           <div className="flex items-center gap-3 mb-6 p-1">
             <div className="text-xs font-bold text-slate-500 uppercase mr-2"><i className="fas fa-filter mr-1"></i> Filters:</div>
             
-            <div className="relative group">
-              <select 
-                value={sevFilter} 
-                onChange={(e) => setSevFilter(e.target.value)}
-                className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg pl-3 pr-8 py-2 text-xs outline-none appearance-none cursor-pointer hover:border-slate-500 transition shadow-sm"
-              >
-                <option value="ALL">All Severities</option>
-                <option value="Critical">Critical</option>
-                <option value="Error">Error</option>
-                <option value="Warning">Warning</option>
-                <option value="Info">Info</option>
-              </select>
-              <i className="fas fa-chevron-down absolute right-3 top-2.5 text-[10px] text-slate-500 pointer-events-none"></i>
-            </div>
-            
-            <div className="relative group">
-              <select 
-                value={envFilter} 
-                onChange={(e) => setEnvFilter(e.target.value)}
-                className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg pl-3 pr-8 py-2 text-xs outline-none appearance-none cursor-pointer hover:border-slate-500 transition shadow-sm"
-              >
-                <option value="ALL">All Regions</option>
-                <option value="PROD">PROD</option>
-                <option value="STG">STG</option>
-              </select>
-              <i className="fas fa-chevron-down absolute right-3 top-2.5 text-[10px] text-slate-500 pointer-events-none"></i>
-            </div>
-
-            <div className="relative group">
-              <select 
-                value={statusFilter} 
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg pl-3 pr-8 py-2 text-xs outline-none appearance-none cursor-pointer hover:border-slate-500 transition shadow-sm"
-              >
-                <option value="ALL">All Statuses</option>
-                <option value="Open">Open</option>
-                <option value="In progress">In Progress</option>
-                <option value="Solved">Solved</option>
-              </select>
-              <i className="fas fa-chevron-down absolute right-3 top-2.5 text-[10px] text-slate-500 pointer-events-none"></i>
-            </div>
-            
-            <div className="h-6 w-px bg-slate-800 mx-2"></div>
-            
-            <button 
-              onClick={handleReset}
-              className="text-slate-400 hover:text-white text-xs font-medium px-2 transition"
+            <select 
+              value={sevFilter} 
+              onChange={(e) => setSevFilter(e.target.value)}
+              className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-3 py-2 text-xs outline-none hover:border-slate-500 cursor-pointer"
             >
-              Reset
-            </button>
+              <option value="ALL">All Severities</option>
+              <option value="Critical">Critical</option>
+              <option value="Error">Error</option>
+              <option value="Warning">Warning</option>
+              <option value="Info">Info</option>
+            </select>
+            
+            <select 
+              value={envFilter} 
+              onChange={(e) => setEnvFilter(e.target.value)}
+              className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-3 py-2 text-xs outline-none hover:border-slate-500 cursor-pointer"
+            >
+              <option value="ALL">All Regions</option>
+              <option value="PROD">PROD</option>
+              <option value="STG">STG</option>
+            </select>
+
+            <select 
+              value={statusFilter} 
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-3 py-2 text-xs outline-none hover:border-slate-500 cursor-pointer"
+            >
+              <option value="ALL">All Statuses</option>
+              <option value="Open">Open</option>
+              <option value="In progress">In Progress</option>
+              <option value="Solved">Solved</option>
+            </select>
+            
+            <button onClick={handleReset} className="text-slate-400 hover:text-white text-xs font-medium px-2 transition">Reset</button>
           </div>
 
-          {/* Conditional Rendering: Loading vs Table */}
-          {isLoading ? (
+          {/* לוגיקת הצגת הנתונים */}
+          {isInitialLoading ? (
+            /* טעינה ראשונית - מסך ריק עם ספינר */
             <div className="flex flex-col items-center justify-center h-64 text-slate-500">
               <i className="fas fa-circle-notch fa-spin text-3xl mb-4 text-indigo-500"></i>
-              <p>Connecting to backend...</p>
+              <p>Loading Alerts from API...</p>
             </div>
           ) : (
-            <AlertsTable alerts={alerts} />
+            /* Table with refresh indicator */
+            <div className={`relative transition-opacity duration-300 ${isFetching ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+              {isFetching && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center">
+                  <i className="fas fa-circle-notch fa-spin text-2xl text-indigo-500"></i>
+                </div>
+              )}
+              <AlertsTable alerts={alerts} />
+            </div>
           )}
           
         </div>

@@ -19,7 +19,7 @@ export async function fetchAlerts(
     if (status !== 'ALL') params.append('status', status);
     if (region !== 'ALL') params.append('region', region);
 
-    const response = await fetch(`${API_BASE_URL}/alerts?${params.toString()}`, {
+    const response = await fetch(`${API_BASE_URL}/alerts/?${params.toString()}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
