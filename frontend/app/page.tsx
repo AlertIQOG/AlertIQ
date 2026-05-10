@@ -15,25 +15,17 @@ export default function Home() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Fetching the data when the page loads
+  // Fetch alerts from backend whenever filters change
   useEffect(() => {
     const loadAlerts = async () => {
       setIsLoading(true);
-      const data = await fetchAlerts(0, 100); // Fetching up to 100 alerts
+      const data = await fetchAlerts(0, 100, sevFilter, statusFilter, envFilter);
       setAlerts(data);
       setIsLoading(false);
     };
 
     loadAlerts();
-  }, []); // Empty dependency array means this runs once on mount
-
-  // Logic for local filtering (adapted for backend fields)
-  const filteredAlerts = alerts.filter(alert => {
-    const matchSev = sevFilter === 'ALL' || alert.severity === sevFilter;
-    const matchEnv = envFilter === 'ALL' || alert.region === envFilter; // Using region as environment
-    const matchStatus = statusFilter === 'ALL' || alert.status === statusFilter;
-    return matchSev && matchEnv && matchStatus;
-  });
+  }, [sevFilter, statusFilter, envFilter]); // Refetch when any filter changes
 
   const handleReset = () => {
     setSevFilter('ALL');
@@ -157,7 +149,7 @@ export default function Home() {
               <p>Connecting to backend...</p>
             </div>
           ) : (
-            <AlertsTable alerts={filteredAlerts} />
+            <AlertsTable alerts={alerts} />
           )}
           
         </div>
