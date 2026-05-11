@@ -1,0 +1,38 @@
+{
+  "receiver": "default",
+  "status": "firing",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "HighCPU",
+        "severity": "critical",
+        "app": "billing-api",
+        "component": "processor",
+        "region": "us-east-1",
+        "instance": "10.0.1.42:9100",
+        "operator": "ops"
+      },
+      "annotations": {
+        "summary": "CPU usage above 90%",
+        "description": "Instance CPU above threshold for 5m."
+      },
+      "startsAt": "2026-04-28T10:00:00.000Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "http://prometheus.example/graph?g0.expr=up",
+      "fingerprint": "a1b2c3d4e5f67890"
+    }
+  ],
+  "groupLabels": {
+    "alertname": "HighCPU"
+  },
+  "commonLabels": {
+    "alertname": "HighCPU",
+    "severity": "critical"
+  },
+  "commonAnnotations": {},
+  "externalURL": "http://alertmanager.example:9093",
+  "version": "4",
+  "groupKey": "{}:{alertname=\"HighCPU\"}",
+  "truncatedAlerts": 0
+}

@@ -1,0 +1,33 @@
+{
+  "status": "firing",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "HighCPU",
+        "severity": "critical",
+        "app": "billing-api",
+        "component": "processor",
+        "region": "us-east-1"
+      },
+      "annotations": {
+        "summary": "CPU usage above 90%",
+        "description": "billing-api processor has high CPU for 5m."
+      },
+      "startsAt": "2026-04-28T10:00:00.000Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "fingerprint": "abc123def456",
+      "values": {
+        "A": 95.2
+      }
+    }
+  ],
+  "commonLabels": {
+    "alertname": "HighCPU"
+  },
+  "commonAnnotations": {},
+  "externalURL": "http://grafana.example/grafana/",
+  "groupLabels": {
+    "alertname": "HighCPU"
+  }
+}
