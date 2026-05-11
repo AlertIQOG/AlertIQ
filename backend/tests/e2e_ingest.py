@@ -52,10 +52,11 @@ r = httpx.post(url, json=payload)
 print(f"Status: {r.status_code}")
 print(f"Response: {json.dumps(r.json(), indent=2)}")
 
-print("\n--- Sending same payload again (testing dedup) ---")
+print("\n--- Sending same payload again (expect updated=2, created=0) ---")
 r2 = httpx.post(url, json=payload)
 print(f"Status: {r2.status_code}")
 print(f"Response: {json.dumps(r2.json(), indent=2)}")
+assert r2.json().get("updated") == 2, "Expected existing alerts to be updated, not re-created"
 
 print("\n--- Checking alerts in DB ---")
 r3 = httpx.get("http://localhost:8000/api/v1/alerts/", params={"source_id": SOURCE_ID})

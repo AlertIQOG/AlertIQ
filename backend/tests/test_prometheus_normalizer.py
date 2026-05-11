@@ -77,3 +77,47 @@ def test_defaults_for_missing_fields(normalizer, source_id):
     alert = normalizer.normalize(source_id, webhook)[0]
     assert alert.message == "Unnamed Prometheus Alertmanager Alert"
     assert alert.severity == AlertSeverity.WARNING
+
+
+def test_external_id_uses_provider_fingerprint(normalizer, source_id):
+    """When a fingerprint is present it is used directly as external_id."""
+    webhook = PrometheusWebhook(
+        alerts=[
+            {
+                "status": "firing",
+                "labels": {"alertname": "HighCPU", "severity": "critical"},
+                "annotations": {},
+                "fingerprint": "abc123",
+            }
+        ]
+    )
+    alert = normalizer.normalize(source_id, webhook)[0]
+    assert alert.external_id == "abc123"
+
+
+def test_external_id_falls_back_to_hash_when_no_fingerprint(normalizer, source_id):
+    """When fingerprint is absent the schema falls back to a 64-char SHA-256 hash."""
+    webhook = PrometheusWebhook(
+        alerts=[{"status": "firing", "labels": {"alertname": "NoFP"}, "annotations": {}, "fingerprint": ""}]
+    )
+    alert = normalizer.normalize(source_id, webhook)[0]
+    assert len(alert.external_id) == 64
+
+
+def test_same_fingerprint_same_external_id_regardless_of_severity(normalizer, source_id):
+    """Re-fire with escalated severity must not change external_id (enables upsert)."""
+    def _make(severity: str):
+        return PrometheusWebhook(
+            alerts=[
+                {
+                    "status": "firing",
+                    "labels": {"alertname": "HighCPU", "severity": severity},
+                    "annotations": {},
+                    "fingerprint": "stable-fp",
+                }
+            ]
+        )
+
+    a = normalizer.normalize(source_id, _make("warning"))[0]
+    b = normalizer.normalize(source_id, _make("critical"))[0]
+    assert a.external_id == b.external_id

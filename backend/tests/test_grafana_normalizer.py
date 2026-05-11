@@ -149,10 +149,27 @@ class TestSingleAlert:
         alert = normalizer.normalize(source_id, webhook)[0]
         assert alert.extra_fields["annotations"]["summary"] == "CPU usage above 90%"
 
-    def test_external_id_is_sha256(self, normalizer, source_id, single_firing_payload):
+    def test_external_id_uses_provider_fingerprint(self, normalizer, source_id, single_firing_payload):
+        """When a fingerprint is present it is used directly as external_id."""
         webhook = GrafanaWebhook(**single_firing_payload)
         alert = normalizer.normalize(source_id, webhook)[0]
-        assert len(alert.external_id) == 64  # SHA-256 hex digest
+        assert alert.external_id == "abc123def456"
+
+    def test_external_id_falls_back_to_hash_when_no_fingerprint(self, normalizer, source_id):
+        """When fingerprint is absent the schema falls back to a 64-char SHA-256 hash."""
+        webhook = GrafanaWebhook(
+            alerts=[
+                {
+                    "status": "firing",
+                    "labels": {"alertname": "NoFP", "severity": "info"},
+                    "annotations": {},
+                    "fingerprint": "",
+                    "values": {},
+                }
+            ]
+        )
+        alert = normalizer.normalize(source_id, webhook)[0]
+        assert len(alert.external_id) == 64
 
 
 # ── Multi-alert / batch tests ───────────────────────────────────────
@@ -239,3 +256,22 @@ class TestEdgeCases:
         a = normalizer.normalize(source_id, _make("fp1"))[0]
         b = normalizer.normalize(source_id, _make("fp2"))[0]
         assert a.external_id != b.external_id
+
+    def test_same_fingerprint_same_external_id_regardless_of_severity(self, normalizer, source_id):
+        """Re-fire with escalated severity must not change external_id (enables upsert)."""
+        def _make(severity: str):
+            return GrafanaWebhook(
+                alerts=[
+                    {
+                        "status": "firing",
+                        "labels": {"alertname": "HighCPU", "severity": severity},
+                        "annotations": {},
+                        "fingerprint": "stable-fp",
+                        "values": {},
+                    }
+                ]
+            )
+
+        a = normalizer.normalize(source_id, _make("warning"))[0]
+        b = normalizer.normalize(source_id, _make("critical"))[0]
+        assert a.external_id == b.external_id
