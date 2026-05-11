@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import AlertsTable from './components/AlertsTable';
 import { fetchAlerts } from './services/alertsApi';
 import { Alert } from './types/alert';
+import AlertDetailsPanel from './components/AlertDetailsPanel';
 
 export default function Home() {
   // State for filters
@@ -15,6 +16,7 @@ export default function Home() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [isInitialLoading, setIsInitialLoading] = useState(true); // for initial loading only
   const [isFetching, setIsFetching] = useState(false); // for all network requests triggered by filter changes
+  const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
 
   // fetching data from the server (Server-Side Filtering)
   useEffect(() => {
@@ -132,9 +134,9 @@ export default function Home() {
             <button onClick={handleReset} className="text-slate-400 hover:text-white text-xs font-medium px-2 transition">Reset</button>
           </div>
 
-          {/* לוגיקת הצגת הנתונים */}
+          {/* Logic for displaying data */}
           {isInitialLoading ? (
-            /* טעינה ראשונית - מסך ריק עם ספינר */
+            /* Initial Loading State */
             <div className="flex flex-col items-center justify-center h-64 text-slate-500">
               <i className="fas fa-circle-notch fa-spin text-3xl mb-4 text-indigo-500"></i>
               <p>Loading Alerts from API...</p>
@@ -147,12 +149,19 @@ export default function Home() {
                   <i className="fas fa-circle-notch fa-spin text-2xl text-indigo-500"></i>
                 </div>
               )}
-              <AlertsTable alerts={alerts} />
+              <AlertsTable alerts={alerts} onRowClick={(alert) => setSelectedAlert(alert)} />
             </div>
           )}
           
         </div>
       </main>
+      {/* Alert Details Panel */}
+      {selectedAlert && (
+        <AlertDetailsPanel 
+          alert={selectedAlert} 
+          onClose={() => setSelectedAlert(null)} 
+        />
+      )}
     </div>
   );
 }

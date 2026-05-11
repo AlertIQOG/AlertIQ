@@ -1,6 +1,6 @@
 import { Alert } from '../types/alert';
 
-export default function AlertsTable({ alerts }: { alerts: Alert[] }) {
+export default function AlertsTable({ alerts, onRowClick }: { alerts: Alert[], onRowClick: (alert: Alert) => void }) {
   const getSeverityStyles = (severity: string) => {
     switch (severity) {
       case 'Critical': return 'bg-red-500/10 text-red-400 border-red-500/20';
@@ -53,7 +53,7 @@ export default function AlertsTable({ alerts }: { alerts: Alert[] }) {
         </thead>
         <tbody className="divide-y divide-slate-800 text-slate-300">
           {alerts.map((alert) => (
-            <tr key={alert.id} className="hover:bg-slate-800/50 transition cursor-pointer bg-slate-800/30">
+            <tr key={alert.id} onClick={() => onRowClick(alert)} className="hover:bg-slate-800/50 transition cursor-pointer bg-slate-800/30">
               <td className="px-4 py-3">
                 <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold border ${getSeverityStyles(alert.severity)}`}>
                   {alert.severity}
