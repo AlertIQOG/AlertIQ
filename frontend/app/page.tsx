@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import AlertsTable from './components/AlertsTable';
-import { fetchAlerts } from './services/alertsApi';
+import { fetchAlerts, updateAlertStatus } from './services/alertsApi';
 import { Alert } from './types/alert';
 import AlertDetailsPanel from './components/AlertDetailsPanel';
 
@@ -11,7 +11,7 @@ export default function Home() {
   const [sevFilter, setSevFilter] = useState('ALL');
   const [envFilter, setEnvFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
-  
+
   // State for alerts data and loading indicators
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [isInitialLoading, setIsInitialLoading] = useState(true); // for initial loading only
@@ -22,10 +22,10 @@ export default function Home() {
   useEffect(() => {
     const loadAlerts = async () => {
       setIsFetching(true);
-      
+
       // Calling the API with the current filters. The API will return only the relevant data based on these filters, so we don't need to do any client-side filtering here.
       const data = await fetchAlerts(0, 100, sevFilter, statusFilter, envFilter);
-      
+
       setAlerts(data);
       setIsFetching(false);
       setIsInitialLoading(false);
@@ -38,6 +38,22 @@ export default function Home() {
     setSevFilter('ALL');
     setEnvFilter('ALL');
     setStatusFilter('ALL');
+  };
+
+  const handleStatusChange = async (alertId: string, newStatus: string) => {
+    setAlerts(prev =>
+      prev.map(a => (a.id === alertId ? { ...a, status: newStatus as import('./types/alert').AlertStatus } : a))
+    );
+
+    if (selectedAlert?.id === alertId) {
+      setSelectedAlert(prev => prev ? { ...prev, status: newStatus as import('./types/alert').AlertStatus } : null);
+    }
+
+    const updated = await updateAlertStatus(alertId, newStatus);
+
+    if (!updated) {
+      console.error('Failed to update alert status on server');
+    }
   };
 
   return (
@@ -66,7 +82,7 @@ export default function Home() {
             </button>
           </nav>
         </div>
-        
+
         <div className="p-4 border-t border-slate-800 bg-slate-900/50">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -93,13 +109,13 @@ export default function Home() {
         </header>
 
         <div className="flex-1 overflow-y-auto p-6">
-          
+
           {/* Filters Bar */}
           <div className="flex items-center gap-3 mb-6 p-1">
             <div className="text-xs font-bold text-slate-500 uppercase mr-2"><i className="fas fa-filter mr-1"></i> Filters:</div>
-            
-            <select 
-              value={sevFilter} 
+
+            <select
+              value={sevFilter}
               onChange={(e) => setSevFilter(e.target.value)}
               className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-3 py-2 text-xs outline-none hover:border-slate-500 cursor-pointer"
             >
@@ -109,9 +125,9 @@ export default function Home() {
               <option value="Warning">Warning</option>
               <option value="Info">Info</option>
             </select>
-            
-            <select 
-              value={envFilter} 
+
+            <select
+              value={envFilter}
               onChange={(e) => setEnvFilter(e.target.value)}
               className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-3 py-2 text-xs outline-none hover:border-slate-500 cursor-pointer"
             >
@@ -120,8 +136,8 @@ export default function Home() {
               <option value="STG">STG</option>
             </select>
 
-            <select 
-              value={statusFilter} 
+            <select
+              value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-3 py-2 text-xs outline-none hover:border-slate-500 cursor-pointer"
             >
@@ -130,7 +146,7 @@ export default function Home() {
               <option value="In progress">In Progress</option>
               <option value="Solved">Solved</option>
             </select>
-            
+
             <button onClick={handleReset} className="text-slate-400 hover:text-white text-xs font-medium px-2 transition">Reset</button>
           </div>
 
@@ -152,14 +168,15 @@ export default function Home() {
               <AlertsTable alerts={alerts} onRowClick={(alert) => setSelectedAlert(alert)} />
             </div>
           )}
-          
+
         </div>
       </main>
       {/* Alert Details Panel */}
       {selectedAlert && (
-        <AlertDetailsPanel 
-          alert={selectedAlert} 
-          onClose={() => setSelectedAlert(null)} 
+        <AlertDetailsPanel
+          alert={selectedAlert}
+          onClose={() => setSelectedAlert(null)}
+          onStatusChange={handleStatusChange}
         />
       )}
     </div>

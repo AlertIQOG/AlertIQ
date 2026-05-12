@@ -3,9 +3,10 @@ import { Alert } from './../types/alert';
 interface AlertDetailsPanelProps {
   alert: Alert;
   onClose: () => void;
+  onStatusChange: (alertId: string, newStatus: string) => void;
 }
 
-export default function AlertDetailsPanel({ alert, onClose }: AlertDetailsPanelProps) {
+export default function AlertDetailsPanel({ alert, onClose, onStatusChange }: AlertDetailsPanelProps) {
   const getSeverityBadge = (severity: string) => {
     const s = severity.toLowerCase();
     if (s === 'critical' || s === 'high') return 'text-orange-400 border-orange-500/30 bg-orange-500/10';
@@ -54,12 +55,18 @@ export default function AlertDetailsPanel({ alert, onClose }: AlertDetailsPanelP
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">Status</label>
-              <div className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 flex items-center justify-between cursor-not-allowed opacity-80">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${alert.status === 'Open' ? 'bg-red-500' : 'bg-blue-500'}`}></div>
-                  <span className="text-sm text-white font-medium">{alert.status}</span>
-                </div>
-                <i className="fas fa-chevron-down text-slate-500 text-xs"></i>
+              <div className="relative">
+                <select
+                  value={alert.status}
+                  onChange={(e) => onStatusChange(alert.id, e.target.value)}
+                  className="w-full appearance-none bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white outline-none cursor-pointer hover:border-slate-500 transition"
+                >
+                  <option value="Open">Open</option>
+                  <option value="In progress">In Progress</option>
+                  <option value="Solved">Solved</option>
+                  <option value="Dismissed">Dismissed</option>
+                </select>
+                <i className="fas fa-chevron-down absolute right-3 top-3 text-slate-500 text-xs pointer-events-none"></i>
               </div>
             </div>
             <div>
