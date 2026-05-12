@@ -84,6 +84,7 @@ class PrometheusNormalizer:
             results.append(
                 AlertCreate(
                     source_id=source_id,
+                    external_id=alert.fingerprint,  # stable provider fingerprint; falls back to hash if empty
                     message=message,
                     severity=severity,
                     status=status,

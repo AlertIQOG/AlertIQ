@@ -29,17 +29,20 @@ class AlertCreate(BaseModel):
 
     @model_validator(mode="after")
     def _compute_external_id(self) -> "AlertCreate":
+        # If the provider already supplied a stable fingerprint, use it as-is.
+        if self.external_id:
+            return self
+        # Otherwise derive a deterministic hash from identity-only fields.
+        # Mutable state (severity, impact, extra_fields) is intentionally excluded
+        # so that re-fires of the same alert produce the same hash.
         payload = {
             "source_id": str(self.source_id),
             "message": self.message,
             "application": self.application,
             "component": self.component,
-            "impact": self.impact,
             "region": self.region,
             "node_name": self.node_name,
             "operator": self.operator,
-            "severity": self.severity.value,
-            "extra_fields": self.extra_fields,
         }
         canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False)
         self.external_id = hashlib.sha256(canonical.encode()).hexdigest()
