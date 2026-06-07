@@ -33,13 +33,12 @@ class AlertService(CRUDBase[Alert]):
         limit: int = 100,
     ) -> list[Alert]:
         """Return alerts belonging to a specific source (provider)."""
-        statement = (
-            select(self.model)
-            .where(self.model.source_id == source_id)
-            .offset(skip)
-            .limit(limit)
+        return self.get_filtered(
+            session,
+            filters={"source_id": source_id},
+            skip=skip,
+            limit=limit,
         )
-        return list(session.exec(statement).all())
 
     def create(self, session: Session, *, obj_in: Alert) -> Alert:
         """
