@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
+    from app.models.note import Note
     from app.models.source import Source
 
 
@@ -55,3 +56,7 @@ class Alert(SQLModel, table=True):
     extra_fields: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
 
     source: "Source" = Relationship(back_populates="alerts")
+    notes: list["Note"] = Relationship(
+        back_populates="alert",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
