@@ -31,7 +31,7 @@ export default function RootLayout({
                 <i className="fas fa-briefcase-medical w-5 text-center mr-2 group-hover:text-white"></i>
                 <span className="font-medium">Incidents Management</span>
               </Link>
-              <Link href="/rules" className="nav-btn w-full flex items-center px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors text-left group">
+              <Link href="/correlation" className="nav-btn w-full flex items-center px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors text-left group">
                 <i className="fas fa-code-branch w-5 text-center mr-2 group-hover:text-white"></i>
                 <span className="font-medium">Correlation Rules</span>
               </Link>
@@ -55,7 +55,6 @@ export default function RootLayout({
           </div>
         </aside>
 
-        {/* Dynamic Content - כאן ירונדר התוכן של כל עמוד (למשל ה-Feed או ה-Rules) */}
         {children}
 
       </body>

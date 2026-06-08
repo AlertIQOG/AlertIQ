@@ -5,6 +5,7 @@ import AlertsTable from './components/AlertsTable';
 import { fetchAlerts, updateAlertStatus } from './services/alertsApi';
 import { Alert } from './types/alert';
 import AlertDetailsPanel from './components/AlertDetailsPanel';
+import PageHeader from './components/PageHeader';
 
 export default function Home() {
   // State for filters
@@ -54,13 +55,7 @@ export default function Home() {
   return (
     <>
       <main className="flex-1 relative flex flex-col h-full overflow-hidden bg-slate-950">
-        <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/80 backdrop-blur">
-          <div className="flex items-center gap-2">
-            <h1 className="text-white font-medium text-lg">Alerts Feed</h1>
-            <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">Live API Data</span>
-          </div>
-        </header>
-
+        <PageHeader title="Alerts Feed" badge="Incoming Stream" />
         <div className="flex-1 overflow-y-auto p-6">
           {/* Filters Bar */}
           <div className="flex items-center gap-3 mb-6 p-1">
