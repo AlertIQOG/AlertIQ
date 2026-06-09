@@ -1,9 +1,10 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { mockIncidents } from '../../data/mockIncidents';
+import { createIncident, fetchIncident, updateIncident } from '../../services/incidentsApi';
 import type { Incident, IncidentPriority, IncidentStage } from '../../types/incident';
 
 const TEAM_MEMBERS = ['Dana G.', 'John D.', 'DevOps Team', 'Unassigned'];
@@ -26,8 +27,8 @@ const STAGE_TEXT_STYLES: Record<IncidentStage, string> = {
 const NEW_INCIDENT_DEFAULTS: Incident = {
   id: 'NEW',
   priority: 'P3',
-  title: 'New Incident Draft',
-  assignee: 'Dana G.',
+  title: '',
+  assignee: 'Unassigned',
   stage: 'Open',
   createdAt: new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }),
   source: 'manual',
@@ -40,19 +41,46 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
   const router = useRouter();
   const isNew = id === 'new';
 
-  const existing = isNew ? null : mockIncidents.find(inc => inc.id === id);
-  const [incident, setIncident] = useState<Incident>(existing ?? NEW_INCIDENT_DEFAULTS);
+  const [incident, setIncident] = useState<Incident>(
+    isNew ? NEW_INCIDENT_DEFAULTS : (mockIncidents.find(inc => inc.id === id) ?? NEW_INCIDENT_DEFAULTS)
+  );
+  const [saving, setSaving] = useState(false);
 
-  if (!isNew && !existing) {
-    return (
-      <main className="flex-1 flex items-center justify-center bg-slate-950">
-        <p className="text-slate-400">Incident not found.</p>
-      </main>
-    );
-  }
+  useEffect(() => {
+    if (isNew) return;
+    fetchIncident(id).then((data) => {
+      if (data) setIncident(data);
+    });
+  }, [id, isNew]);
 
   const update = <K extends keyof Incident>(field: K, value: Incident[K]) => {
     setIncident(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    if (isNew) {
+      await createIncident({
+        title: incident.title,
+        priority: incident.priority,
+        stage: incident.stage,
+        assignee: incident.assignee,
+        source: incident.source,
+        notes: incident.notes,
+        affectedServices: incident.affectedServices,
+      });
+    } else {
+      await updateIncident(id, {
+        title: incident.title,
+        priority: incident.priority,
+        stage: incident.stage,
+        assignee: incident.assignee,
+        notes: incident.notes,
+        affectedServices: incident.affectedServices,
+      });
+    }
+    setSaving(false);
+    router.push('/incidents');
   };
 
   return (
@@ -72,14 +100,23 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
               {incident.priority}
             </span>
           </div>
-          <div className="text-white font-bold text-sm">{incident.title}</div>
+          <div className="text-white font-bold text-sm">
+            {isNew ? (
+              <input
+                type="text"
+                value={incident.title}
+                onChange={(e) => update('title', e.target.value)}
+                placeholder="Incident title..."
+                className="bg-transparent outline-none placeholder:text-slate-600 w-96"
+              />
+            ) : incident.title}
+          </div>
         </div>
       </header>
 
       <div className="flex-1 overflow-y-auto p-8">
         <div className="max-w-6xl mx-auto">
 
-          {/* Info cards */}
           <div className="grid grid-cols-4 gap-4 mb-8">
             <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
               <label className="block text-[10px] text-slate-500 font-bold uppercase mb-2">Assignee</label>
@@ -129,7 +166,6 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
             </div>
           </div>
 
-          {/* Main content */}
           <div className="grid grid-cols-3 gap-8">
             <div className="col-span-2 space-y-6">
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
@@ -194,10 +230,11 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
               Cancel
             </Link>
             <button
-              onClick={() => router.push('/incidents')}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-lg text-sm font-bold shadow-lg shadow-indigo-500/20 transition"
+              onClick={handleSave}
+              disabled={saving}
+              className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-6 py-2 rounded-lg text-sm font-bold shadow-lg shadow-indigo-500/20 transition"
             >
-              {isNew ? 'Create Incident' : 'Save Changes'}
+              {saving ? 'Saving...' : isNew ? 'Create Incident' : 'Save Changes'}
             </button>
           </div>
 

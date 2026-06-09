@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import DataTable, { ColumnDef } from '../components/DataTable';
 import { mockIncidents } from '../data/mockIncidents';
+import { fetchIncidents } from '../services/incidentsApi';
 import type { Incident, IncidentPriority, IncidentStage } from '../types/incident';
 
 const PRIORITY_STYLES: Record<IncidentPriority, string> = {
@@ -12,6 +13,13 @@ const PRIORITY_STYLES: Record<IncidentPriority, string> = {
   P2: 'bg-orange-500 text-white',
   P3: 'bg-yellow-500 text-white',
   P4: 'bg-slate-600 text-white',
+};
+
+const PRIORITY_LABELS: Record<IncidentPriority, string> = {
+  P1: 'P1 · Critical',
+  P2: 'P2 · High',
+  P3: 'P3 · Medium',
+  P4: 'P4 · Low',
 };
 
 const STAGE_STYLES: Record<IncidentStage, string> = {
@@ -23,8 +31,17 @@ const STAGE_STYLES: Record<IncidentStage, string> = {
 export default function IncidentsPage() {
   const router = useRouter();
   const [search, setSearch] = useState('');
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filtered = mockIncidents.filter(inc =>
+  useEffect(() => {
+    fetchIncidents().then((data) => {
+      setIncidents(data.length > 0 ? data : mockIncidents);
+      setLoading(false);
+    });
+  }, []);
+
+  const filtered = incidents.filter(inc =>
     inc.title.toLowerCase().includes(search.toLowerCase()) ||
     inc.id.toLowerCase().includes(search.toLowerCase())
   );
@@ -42,7 +59,7 @@ export default function IncidentsPage() {
       className: 'w-24',
       renderCell: (row) => (
         <span className={`px-2 py-1 text-[10px] font-bold rounded ${PRIORITY_STYLES[row.priority]}`}>
-          {row.priority}
+          {PRIORITY_LABELS[row.priority]}
         </span>
       ),
     },
@@ -124,11 +141,15 @@ export default function IncidentsPage() {
           </Link>
         </div>
 
-        <DataTable
-          columns={columns}
-          data={filtered}
-          onRowClick={(row) => router.push(`/incidents/${row.id}`)}
-        />
+        {loading ? (
+          <div className="flex items-center justify-center h-40 text-slate-500 text-sm">Loading...</div>
+        ) : (
+          <DataTable
+            columns={columns}
+            data={filtered}
+            onRowClick={(row) => router.push(`/incidents/${row.id}`)}
+          />
+        )}
       </div>
     </main>
   );
