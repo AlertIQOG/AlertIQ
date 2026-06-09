@@ -9,6 +9,7 @@ from fastapi import Depends, Query
 from sqlmodel import Session
 
 from app.core.database import get_session
+from app.core.exceptions import NotFoundError
 from app.models.alert import AlertSeverity, AlertStatus
 
 # Re-usable annotated dependency — avoids repeating ``Depends(get_session)``
@@ -99,3 +100,19 @@ class AlertFilterParams(FilterParams):
         self.component = component
         self.node_name = node_name
         self.operator = operator
+
+
+# ── Parent-resource validators ────────────────────────────────────
+
+
+def _valid_alert_id(alert_id: uuid.UUID, session: DbSession) -> uuid.UUID:
+    """Validate alert exists, raising 404 if not."""
+    from app.services.alert import alert_service
+
+    if not alert_service.get(session, id=alert_id):
+        raise NotFoundError("Alert", str(alert_id))
+    return alert_id
+
+
+ValidAlertId = Annotated[uuid.UUID, Depends(_valid_alert_id)]
+

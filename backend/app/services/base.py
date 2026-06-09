@@ -76,6 +76,8 @@ class CRUDBase(Generic[ModelType]):
         filters: dict[str, Any],
         skip: int = 0,
         limit: int = 100,
+        order_by: str | None = None,
+        order_desc: bool = False,
     ) -> list[ModelType]:
         """
         Return a paginated list of records matching **all** provided filters.
@@ -89,7 +91,9 @@ class CRUDBase(Generic[ModelType]):
            ``WHERE jsonb_col->>key = value`` clause is emitted.
         3. **None values** are silently skipped.
 
-        Pagination (``skip`` / ``limit``) is applied **after** all filters.
+        Ordering is applied via ``order_by`` (column name) and ``order_desc``.
+        Pagination (``skip`` / ``limit``) is applied **after** filtering and
+        ordering.
 
         This design means adding a new filter requires **zero** changes in
         the service layer -- just declare the new ``Query`` parameter in the
@@ -112,6 +116,10 @@ class CRUDBase(Generic[ModelType]):
                 statement = statement.where(
                     jsonb_col[field].astext == str(value)
                 )
+
+        if order_by and order_by in self._column_names:
+            col = getattr(self.model, order_by)
+            statement = statement.order_by(col.desc() if order_desc else col.asc())
 
         statement = statement.offset(skip).limit(limit)
         return list(session.exec(statement).all())
