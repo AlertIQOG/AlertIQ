@@ -4,7 +4,7 @@ import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { mockIncidents } from '../../data/mockIncidents';
-import { createIncident, fetchIncident, updateIncident } from '../../services/incidentsApi';
+import { createIncident, deleteIncident, fetchIncident, updateIncident } from '../../services/incidentsApi';
 import type { Incident, IncidentPriority, IncidentStage } from '../../types/incident';
 
 const TEAM_MEMBERS = ['Dana G.', 'John D.', 'DevOps Team', 'Unassigned'];
@@ -45,6 +45,7 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
     isNew ? NEW_INCIDENT_DEFAULTS : (mockIncidents.find(inc => inc.id === id) ?? NEW_INCIDENT_DEFAULTS)
   );
   const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     if (isNew) return;
@@ -81,6 +82,12 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
     }
     setSaving(false);
     router.push('/incidents');
+  };
+
+  const handleDelete = async () => {
+    if (!confirmDelete) { setConfirmDelete(true); return; }
+    const ok = await deleteIncident(id);
+    if (ok) router.push('/incidents');
   };
 
   return (
@@ -225,17 +232,33 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
             </div>
           </div>
 
-          <div className="flex justify-end gap-4 mt-8 pt-6 border-t border-slate-800">
-            <Link href="/incidents" className="text-slate-400 hover:text-white text-sm font-medium transition">
-              Cancel
-            </Link>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-6 py-2 rounded-lg text-sm font-bold shadow-lg shadow-indigo-500/20 transition"
-            >
-              {saving ? 'Saving...' : isNew ? 'Create Incident' : 'Save Changes'}
-            </button>
+          <div className="flex justify-between items-center mt-8 pt-6 border-t border-slate-800">
+            {!isNew ? (
+              <button
+                onClick={handleDelete}
+                className={`text-sm font-medium transition px-4 py-2 rounded-lg border ${
+                  confirmDelete
+                    ? 'bg-red-600 hover:bg-red-500 text-white border-red-600'
+                    : 'text-red-400 border-red-500/30 hover:bg-red-500/10'
+                }`}
+              >
+                <i className="fas fa-trash text-xs mr-2"></i>
+                {confirmDelete ? 'Confirm Delete' : 'Delete Incident'}
+              </button>
+            ) : <div />}
+
+            <div className="flex gap-4">
+              <Link href="/incidents" className="text-slate-400 hover:text-white text-sm font-medium transition">
+                Cancel
+              </Link>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-6 py-2 rounded-lg text-sm font-bold shadow-lg shadow-indigo-500/20 transition"
+              >
+                {saving ? 'Saving...' : isNew ? 'Create Incident' : 'Save Changes'}
+              </button>
+            </div>
           </div>
 
         </div>

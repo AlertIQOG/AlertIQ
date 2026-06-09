@@ -110,6 +110,10 @@ export default function Home() {
           alert={selectedAlert}
           onClose={() => setSelectedAlert(null)}
           onStatusChange={handleStatusChange}
+          onAlertUpdate={(updated) => {
+            setSelectedAlert(updated);
+            setAlerts(prev => prev.map(a => a.id === updated.id ? updated : a));
+          }}
         />
       )}
     </>
