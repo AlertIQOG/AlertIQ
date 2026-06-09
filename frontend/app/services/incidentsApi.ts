@@ -48,6 +48,19 @@ export async function createIncident(body: Omit<Incident, 'id' | 'createdAt' | '
   }
 }
 
+export async function deleteIncident(id: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/incidents/${id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return response.ok || response.status === 204;
+  } catch (error) {
+    console.error('Error deleting incident:', error);
+    return false;
+  }
+}
+
 export async function updateIncident(id: string, body: Partial<Incident>): Promise<Incident | null> {
   try {
     const response = await fetch(`${API_BASE_URL}/incidents/${id}`, {

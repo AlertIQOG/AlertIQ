@@ -69,3 +69,34 @@ export async function updateAlertStatus(
     return null;
   }
 }
+
+async function patchAlertNotes(alert: Alert, notes: { content: string; created_at: string }[]): Promise<Alert | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/alerts/${alert.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ extra_fields: { ...alert.extra_fields, _notes: notes } }),
+    });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return await response.json() as Alert;
+  } catch (error) {
+    console.error('Error patching notes:', error);
+    return null;
+  }
+}
+
+export async function addAlertNote(alert: Alert, content: string): Promise<Alert | null> {
+  const existing = (alert.extra_fields?._notes as { content: string; created_at: string }[]) ?? [];
+  return patchAlertNotes(alert, [...existing, { content, created_at: new Date().toISOString() }]);
+}
+
+export async function updateAlertNote(alert: Alert, index: number, content: string): Promise<Alert | null> {
+  const notes = [...((alert.extra_fields?._notes as { content: string; created_at: string }[]) ?? [])];
+  notes[index] = { ...notes[index], content };
+  return patchAlertNotes(alert, notes);
+}
+
+export async function deleteAlertNote(alert: Alert, index: number): Promise<Alert | null> {
+  const notes = ((alert.extra_fields?._notes as { content: string; created_at: string }[]) ?? []).filter((_, i) => i !== index);
+  return patchAlertNotes(alert, notes);
+}

@@ -1,6 +1,11 @@
 export type AlertSeverity = 'Info' | 'Warning' | 'Error' | 'Critical';
 export type AlertStatus = 'Open' | 'In progress' | 'Solved' | 'Dismissed';
 
+export interface AlertNote {
+  content: string;
+  created_at: string;
+}
+
 export interface Alert {
   id: string;
   source_id: string;
@@ -15,9 +20,7 @@ export interface Alert {
   severity: AlertSeverity;
   status: AlertStatus;
   extra_fields: Record<string, unknown>;
-  created_at?: string; 
+  created_at?: string;
   updated_at?: string;
-  
-  // Indicates if this alert is an aggregated alert representing multiple underlying alerts
   isAggregated?: boolean;
 }

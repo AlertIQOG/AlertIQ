@@ -39,3 +39,10 @@ def update_incident(*, session: DbSession, incident_id: uuid.UUID, body: Inciden
         raise NotFoundError("Incident", str(incident_id))
     update_data = body.model_dump(exclude_unset=True)
     return incident_service.update(session, db_obj=incident, update_data=update_data)
+
+
+@router.delete("/{incident_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_incident(*, session: DbSession, incident_id: uuid.UUID) -> None:
+    incident = incident_service.remove(session, id=incident_id)
+    if not incident:
+        raise NotFoundError("Incident", str(incident_id))

@@ -5,8 +5,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import DataTable, { ColumnDef } from '../components/DataTable';
 import { mockIncidents } from '../data/mockIncidents';
-import { fetchIncidents } from '../services/incidentsApi';
+import { deleteIncident, fetchIncidents, updateIncident } from '../services/incidentsApi';
 import type { Incident, IncidentPriority, IncidentStage } from '../types/incident';
+
+const TEAM_MEMBERS = ['Dana G.', 'John D.', 'DevOps Team', 'Unassigned'];
 
 const PRIORITY_STYLES: Record<IncidentPriority, string> = {
   P1: 'bg-red-500 text-white',
@@ -33,6 +35,20 @@ export default function IncidentsPage() {
   const [search, setSearch] = useState('');
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+
+  const handleAssigneeChange = async (incidentId: string, assignee: string) => {
+    setIncidents(prev => prev.map(i => i.id === incidentId ? { ...i, assignee } : i));
+    await updateIncident(incidentId, { assignee });
+  };
+
+  const handleDelete = async (e: React.MouseEvent, incidentId: string) => {
+    e.stopPropagation();
+    if (deleteConfirm !== incidentId) { setDeleteConfirm(incidentId); return; }
+    const ok = await deleteIncident(incidentId);
+    if (ok) setIncidents(prev => prev.filter(i => i.id !== incidentId));
+    setDeleteConfirm(null);
+  };
 
   useEffect(() => {
     fetchIncidents().then((data) => {
@@ -71,18 +87,17 @@ export default function IncidentsPage() {
     },
     {
       header: 'Assignee',
-      className: 'w-40',
+      className: 'w-44',
       renderCell: (row) => (
-        row.assignee === 'Unassigned' ? (
-          <span className="text-xs text-slate-500">Unassigned</span>
-        ) : (
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-purple-600 flex items-center justify-center text-[10px] text-white shrink-0">
-              {row.assignee.split(' ').map((n: string) => n[0]).join('')}
-            </div>
-            <span className="text-xs">{row.assignee}</span>
-          </div>
-        )
+        <div onClick={(e) => e.stopPropagation()}>
+          <select
+            value={row.assignee}
+            onChange={(e) => handleAssigneeChange(row.id, e.target.value)}
+            className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-2 py-1 text-xs outline-none cursor-pointer hover:border-slate-500 transition appearance-none w-full"
+          >
+            {TEAM_MEMBERS.map(m => <option key={m}>{m}</option>)}
+          </select>
+        </div>
       ),
     },
     {
@@ -103,9 +118,25 @@ export default function IncidentsPage() {
     },
     {
       header: '',
-      className: 'w-10',
-      renderCell: () => (
-        <i className="fas fa-chevron-right text-slate-600"></i>
+      className: 'w-20',
+      renderCell: (row) => (
+        <div className="flex items-center justify-end gap-3" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={(e) => handleDelete(e, row.id)}
+            className={`text-xs font-medium transition px-2 py-1 rounded ${
+              deleteConfirm === row.id
+                ? 'bg-red-600 text-white'
+                : 'text-slate-500 hover:text-red-400'
+            }`}
+            title="Delete incident"
+          >
+            {deleteConfirm === row.id
+              ? <><i className="fas fa-check mr-1"></i>Sure?</>
+              : <i className="fas fa-trash"></i>
+            }
+          </button>
+          <i className="fas fa-chevron-right text-slate-600"></i>
+        </div>
       ),
     },
   ];
