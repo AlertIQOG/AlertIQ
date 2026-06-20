@@ -1,6 +1,7 @@
 """Alert-specific service logic."""
 
 import uuid
+from typing import Any
 
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
@@ -9,6 +10,7 @@ from app.core.exceptions import ConflictError
 from app.models.alert import Alert, AlertStatus
 from app.schemas.alert import AlertCreate
 from app.services.base import CRUDBase
+from app.services.rag.indexer import safe_index_alert
 
 
 class AlertService(CRUDBase[Alert]):
@@ -89,13 +91,26 @@ class AlertService(CRUDBase[Alert]):
                 existing.status = obj_in.status
             session.commit()
             session.refresh(existing)
+            if existing.status == AlertStatus.SOLVED:
+                safe_index_alert(session, existing)
             return existing, False
 
         alert = Alert.model_validate(obj_in.model_dump())
         session.add(alert)
         session.commit()
         session.refresh(alert)
+        if alert.status == AlertStatus.SOLVED:
+            safe_index_alert(session, alert)
         return alert, True
+
+    def update(
+        self, session: Session, *, db_obj: Alert, update_data: dict[str, Any]
+    ) -> Alert:
+        """Update an alert, indexing it (best-effort) once it becomes Solved."""
+        updated = super().update(session, db_obj=db_obj, update_data=update_data)
+        if updated.status == AlertStatus.SOLVED:
+            safe_index_alert(session, updated)
+        return updated
 
 
 alert_service = AlertService(Alert)
