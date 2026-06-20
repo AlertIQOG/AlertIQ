@@ -17,7 +17,8 @@ interface DataTableProps<T> {
 export default function DataTable<T>({ columns, data, onRowClick }: DataTableProps<T>) {
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
-      <table className="w-full text-left">
+      <div className="overflow-x-auto custom-scrollbar">
+      <table className="w-full text-left min-w-max">
         <thead className="bg-slate-800/50 text-xs uppercase font-semibold text-slate-500 border-b border-slate-800">
           <tr>
             {columns.map((col, idx) => (
@@ -47,6 +48,7 @@ export default function DataTable<T>({ columns, data, onRowClick }: DataTablePro
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
