@@ -17,6 +17,30 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "postgresql://alertiq:alertiq@localhost:5432/alertiq"
 
+    # ── Resolution Copilot (RAG) ──────────────────────────────────────
+    # Generation provider switch: "anthropic" or "google". Selects which
+    # LLM the copilot uses for generation; embeddings stay on Voyage.
+    LLM_PROVIDER: str = "anthropic"
+
+    # Anthropic Claude
+    ANTHROPIC_API_KEY: str = ""
+    CLAUDE_MODEL: str = "claude-opus-4-8"
+
+    # Google Gemini
+    GOOGLE_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+
+    # Embeddings — one model per vector index. Provider: "voyage" or "google".
+    EMBEDDING_PROVIDER: str = "voyage"
+    VOYAGE_API_KEY: str = ""
+    EMBEDDING_MODEL: str = "voyage-3"          # Voyage embedding model
+    GOOGLE_EMBEDDING_MODEL: str = "gemini-embedding-001"  # Google embedding model
+    EMBEDDING_DIM: int = 1024
+
+    # Retrieval tuning
+    RAG_TOP_K: int = 5
+    RAG_RELEVANCE_FLOOR: float = 0.5
+
     # Future: Auth, etc.
     # SECRET_KEY: str = ""
 
