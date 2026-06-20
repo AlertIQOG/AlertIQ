@@ -1,4 +1,5 @@
 import { Alert } from '../types/alert';
+import { CopilotSuggestion } from '../types/copilot';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
@@ -99,4 +100,27 @@ export async function updateAlertNote(alert: Alert, index: number, content: stri
 export async function deleteAlertNote(alert: Alert, index: number): Promise<Alert | null> {
   const notes = ((alert.extra_fields?._notes as { content: string; created_at: string }[]) ?? []).filter((_, i) => i !== index);
   return patchAlertNotes(alert, notes);
+}
+
+export async function fetchCopilotSuggestion(
+  alertId: string,
+  force: boolean = false
+): Promise<CopilotSuggestion | null> {
+  try {
+    const params = new URLSearchParams();
+    if (force) params.append('force', 'true');
+    const query = params.toString();
+    const response = await fetch(
+      `${API_BASE_URL}/alerts/${alertId}/copilot${query ? `?${query}` : ''}`,
+      {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return await response.json() as CopilotSuggestion;
+  } catch (error) {
+    console.error('Error fetching copilot suggestion:', error);
+    return null;
+  }
 }
