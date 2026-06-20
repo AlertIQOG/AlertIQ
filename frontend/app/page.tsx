@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import AlertsTable from './components/AlertsTable';
+import ColumnPicker from './components/ColumnPicker';
 import { fetchAlerts, updateAlertStatus } from './services/alertsApi';
 import { Alert } from './types/alert';
 import AlertDetailsPanel from './components/AlertDetailsPanel';
 import PageHeader from './components/PageHeader';
+import { DEFAULT_VISIBLE_KEYS, STORAGE_KEY } from './data/columnConfig';
 
 export default function Home() {
   // State for filters
@@ -18,6 +20,36 @@ export default function Home() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isFetching, setIsFetching] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
+
+  // ── Column visibility state with localStorage persistence ────
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(DEFAULT_VISIBLE_KEYS);
+  const [columnsLoaded, setColumnsLoaded] = useState(false);
+
+  // Load saved column preferences on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setVisibleColumns(parsed);
+        }
+      }
+    } catch {
+      // If parsing fails, use defaults silently
+    }
+    setColumnsLoaded(true);
+  }, []);
+
+  // Persist column preferences whenever they change
+  const handleColumnsChange = useCallback((columns: string[]) => {
+    setVisibleColumns(columns);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(columns));
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
 
   useEffect(() => {
     const loadAlerts = async () => {
@@ -83,6 +115,17 @@ export default function Home() {
             </select>
 
             <button onClick={handleReset} className="text-slate-400 hover:text-white text-xs font-medium px-2 transition">Reset</button>
+
+            {/* Spacer to push Column Picker to the right */}
+            <div className="flex-1" />
+
+            {/* Column Configuration Picker */}
+            {columnsLoaded && (
+              <ColumnPicker
+                visibleColumns={visibleColumns}
+                onColumnsChange={handleColumnsChange}
+              />
+            )}
           </div>
 
           {/* Logic for displaying data */}
@@ -98,7 +141,11 @@ export default function Home() {
                   <i className="fas fa-circle-notch fa-spin text-2xl text-indigo-500"></i>
                 </div>
               )}
-              <AlertsTable alerts={alerts} onRowClick={(alert) => setSelectedAlert(alert)} />
+              <AlertsTable
+                alerts={alerts}
+                onRowClick={(alert) => setSelectedAlert(alert)}
+                visibleColumns={visibleColumns}
+              />
             </div>
           )}
         </div>

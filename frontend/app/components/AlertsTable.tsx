@@ -1,15 +1,17 @@
 import React from 'react';
 import DataTable, { ColumnDef } from './DataTable';
 import { Alert } from '../types/alert';
+import { ALL_COLUMNS, DEFAULT_VISIBLE_KEYS } from '../data/columnConfig';
 
 interface AlertsTableProps {
   alerts: Alert[];
   onRowClick: (alert: Alert) => void;
+  visibleColumns?: string[];  // ordered list of column keys to show
 }
 
-export default function AlertsTable({ alerts, onRowClick }: AlertsTableProps) {
+export default function AlertsTable({ alerts, onRowClick, visibleColumns }: AlertsTableProps) {
   
-  // Helper functions - נשארו בדיוק כמו שהיו
+  // Helper functions — kept exactly as they were
   const getSeverityStyles = (severity: string) => {
     switch (severity) {
       case 'Critical': return 'bg-red-500/10 text-red-400 border-red-500/20';
@@ -36,6 +38,15 @@ export default function AlertsTable({ alerts, onRowClick }: AlertsTableProps) {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  const formatDateTime = (dateString?: string) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleString([], {
+      month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    });
+  };
+
   // Empty state check
   if (!alerts || alerts.length === 0) {
     return (
@@ -45,9 +56,11 @@ export default function AlertsTable({ alerts, onRowClick }: AlertsTableProps) {
     );
   }
 
-  // Column definitions for the DataTable
-  const alertColumns: ColumnDef<Alert>[] = [
-    {
+  // ── Column Render Registry ────────────────────────────────────
+  // Maps each column key to its ColumnDef<Alert> configuration.
+  // This is the single source of truth for how each column renders.
+  const columnRenderers: Record<string, ColumnDef<Alert>> = {
+    severity: {
       header: 'Severity',
       className: 'w-24',
       renderCell: (alert) => (
@@ -56,7 +69,7 @@ export default function AlertsTable({ alerts, onRowClick }: AlertsTableProps) {
         </span>
       )
     },
-    {
+    status: {
       header: 'Status',
       className: 'w-24',
       renderCell: (alert) => (
@@ -65,7 +78,7 @@ export default function AlertsTable({ alerts, onRowClick }: AlertsTableProps) {
         </span>
       )
     },
-    {
+    message: {
       header: 'Message',
       renderCell: (alert) => (
         <>
@@ -74,7 +87,7 @@ export default function AlertsTable({ alerts, onRowClick }: AlertsTableProps) {
         </>
       )
     },
-    {
+    region: {
       header: 'Region',
       className: 'w-24',
       renderCell: (alert) => (
@@ -83,16 +96,61 @@ export default function AlertsTable({ alerts, onRowClick }: AlertsTableProps) {
         </span>
       )
     },
-    {
+    application: {
       header: 'Application',
       className: 'w-32',
       renderCell: (alert) => (
         <span className="text-xs text-slate-400">
-          {alert.application || 'System'} {alert.component ? `(${alert.component})` : ''}
+          {alert.application || 'System'}
         </span>
       )
     },
-    {
+    component: {
+      header: 'Component',
+      className: 'w-28',
+      renderCell: (alert) => (
+        <span className="text-xs text-slate-400">
+          {alert.component || '—'}
+        </span>
+      )
+    },
+    impact: {
+      header: 'Impact',
+      className: 'w-28',
+      renderCell: (alert) => (
+        <span className="text-xs text-slate-400">
+          {alert.impact || '—'}
+        </span>
+      )
+    },
+    node_name: {
+      header: 'Node Name',
+      className: 'w-28',
+      renderCell: (alert) => (
+        <span className="text-xs text-slate-400 font-mono">
+          {alert.node_name || '—'}
+        </span>
+      )
+    },
+    operator: {
+      header: 'Operator',
+      className: 'w-28',
+      renderCell: (alert) => (
+        <span className="text-xs text-slate-400">
+          {alert.operator || '—'}
+        </span>
+      )
+    },
+    external_id: {
+      header: 'External ID',
+      className: 'w-36',
+      renderCell: (alert) => (
+        <span className="text-[10px] text-slate-500 font-mono truncate block max-w-[130px]" title={alert.external_id}>
+          {alert.external_id?.slice(0, 12)}…
+        </span>
+      )
+    },
+    created_at: {
       header: 'Time',
       className: 'w-24 text-right',
       renderCell: (alert) => (
@@ -101,14 +159,31 @@ export default function AlertsTable({ alerts, onRowClick }: AlertsTableProps) {
         </span>
       )
     },
-    {
-      header: '', // Empty header for the "details" icon column
-      className: 'w-10 text-right',
-      renderCell: () => (
-        <i className="fas fa-chevron-right text-slate-600"></i>
+    updated_at: {
+      header: 'Updated At',
+      className: 'w-32 text-right',
+      renderCell: (alert) => (
+        <span className="text-xs text-slate-400">
+          {formatDateTime(alert.updated_at)}
+        </span>
       )
-    }
-  ];
+    },
+  };
+
+  // ── Build final column array from visible keys ────────────────
+  const activeKeys = visibleColumns || DEFAULT_VISIBLE_KEYS;
+  const alertColumns: ColumnDef<Alert>[] = activeKeys
+    .filter((key) => columnRenderers[key])
+    .map((key) => columnRenderers[key]);
+
+  // Always add the chevron "details" column at the end
+  alertColumns.push({
+    header: '',
+    className: 'w-10 text-right',
+    renderCell: () => (
+      <i className="fas fa-chevron-right text-slate-600"></i>
+    )
+  });
 
   return <DataTable columns={alertColumns} data={alerts} onRowClick={onRowClick} />;
 }
