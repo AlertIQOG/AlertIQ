@@ -15,3 +15,9 @@ mypy
 # Database
 sqlmodel
 psycopg2-binary
+pgvector
+
+# Resolution Copilot (RAG)
+anthropic          # Claude generation provider
+google-genai       # Gemini generation provider (from google import genai)
+voyageai           # embeddings (voyage-3)
