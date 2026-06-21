@@ -16,9 +16,9 @@ interface DataTableProps<T> {
 
 export default function DataTable<T>({ columns, data, onRowClick }: DataTableProps<T>) {
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
-      <div className="overflow-x-auto custom-scrollbar">
-      <table className="w-full text-left min-w-max">
+    <div className="w-full h-full bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm flex flex-col">
+      <div className="w-full overflow-x-auto custom-scrollbar flex-1">
+      <table className="w-full text-left">
         <thead className="bg-slate-800/50 text-xs uppercase font-semibold text-slate-500 border-b border-slate-800">
           <tr>
             {columns.map((col, idx) => (
@@ -41,7 +41,7 @@ export default function DataTable<T>({ columns, data, onRowClick }: DataTablePro
                       Otherwise, simply display the regular text from the data object */}
                   {col.renderCell 
                     ? col.renderCell(row) 
-                    : String(row[col.accessor as keyof T])}
+                    : String(row[col.accessor as keyof T] || '')}
                 </td>
               ))}
             </tr>
