@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import CorrelationRulesTable, { CorrelationRule } from './components/CorrelationRulesTable';
+import CorrelationRulesTable from './components/CorrelationRulesTable';
+import { CorrelationRule } from '../types/correlation';
 
 const MOCK_RULES: CorrelationRule[] = [
   {
@@ -41,7 +42,6 @@ export default function CorrelationRulesPage() {
 
   return (
     <main className="flex-1 relative flex flex-col h-full overflow-hidden bg-slate-950">
-      {/* Header - בדיוק כמו בעמוד Incidents */}
       <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/80 backdrop-blur shrink-0">
         <div className="flex items-center gap-2">
           <h1 className="text-white font-medium text-lg">Correlation Rules</h1>

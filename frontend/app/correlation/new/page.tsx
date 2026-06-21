@@ -3,13 +3,8 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { CorrelationCondition } from '../../types/correlation';
 
-interface Condition {
-  id: string;
-  metric: string;
-  operator: string;
-  value: string;
-}
 
 export default function CreateCorrelationRulePage() {
   const router = useRouter();
@@ -23,12 +18,12 @@ export default function CreateCorrelationRulePage() {
   const [customTimeUnit, setCustomTimeUnit] = useState('Minutes');
   
   // State for dynamic conditions
-  const [conditions, setConditions] = useState<Condition[]>([
+    const [conditions, setConditions] = useState<CorrelationCondition[]>([
     { id: '1', metric: 'Metric: CPU Usage', operator: 'Greater than', value: '90%' }
   ]);
 
   const handleAddCondition = () => {
-    const newCondition: Condition = {
+    const newCondition: CorrelationCondition = {
       id: Date.now().toString(),
       metric: 'Log: Error Rate (5xx)',
       operator: 'Is Present',
@@ -43,14 +38,14 @@ export default function CreateCorrelationRulePage() {
     }
   };
 
-  const updateCondition = (id: string, field: keyof Condition, newValue: string) => {
+  const updateCondition = (id: string, field: keyof CorrelationCondition, newValue: string) => {
     setConditions(prev => prev.map(cond => 
       cond.id === id ? { ...cond, [field]: newValue } : cond
     ));
   };
 
   const handleSaveRule = () => {
-    // מרכיבים את חלון הזמן הסופי: אם בחר "Other", משרשרים את המספר עם היחידה
+    // Determine the final time window value based on user selection
     const finalTimeWindow = timeWindow === 'Other' 
       ? `${customTimeValue} ${customTimeUnit}` 
       : timeWindow;
@@ -217,7 +212,7 @@ export default function CreateCorrelationRulePage() {
                 <option>Other</option>
               </select>
 
-              {/* קלט מפוצל למספר ויחידת זמן כפי שביקשת */}
+              {/* Custom Time Window Input */}
               {timeWindow === 'Other' && (
                 <div className="flex items-center gap-2 mt-1 animate-fadeIn">
                   <input 
