@@ -18,6 +18,10 @@ export default function CreateCorrelationRulePage() {
   const [ruleName, setRuleName] = useState('');
   const [timeWindow, setTimeWindow] = useState('5 Minutes');
   
+  // States for custom time window
+  const [customTimeValue, setCustomTimeValue] = useState(''); 
+  const [customTimeUnit, setCustomTimeUnit] = useState('Minutes');
+  
   // State for dynamic conditions
   const [conditions, setConditions] = useState<Condition[]>([
     { id: '1', metric: 'Metric: CPU Usage', operator: 'Greater than', value: '90%' }
@@ -46,9 +50,14 @@ export default function CreateCorrelationRulePage() {
   };
 
   const handleSaveRule = () => {
+    // מרכיבים את חלון הזמן הסופי: אם בחר "Other", משרשרים את המספר עם היחידה
+    const finalTimeWindow = timeWindow === 'Other' 
+      ? `${customTimeValue} ${customTimeUnit}` 
+      : timeWindow;
+
     console.log({
       ruleName,
-      timeWindow,
+      timeWindow: finalTimeWindow,
       conditions
     });
     router.push('/correlation');
@@ -114,9 +123,8 @@ export default function CreateCorrelationRulePage() {
             </div>
           </div>
 
-          {/* Trigger Logic Section - הסרנו את overflow-hidden לגמרי! */}
+          {/* Trigger Logic Section */}
           <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6 shadow-sm relative flex flex-col gap-6">
-            {/* הפס הסגול קיבל rounded-l-xl כדי לשמור על העיצוב בלי לחתוך את התוכן */}
             <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500/30 rounded-l-xl"></div>
             
             <div className="flex items-center gap-2">
@@ -183,7 +191,6 @@ export default function CreateCorrelationRulePage() {
               ))}
             </div>
 
-            {/* כפתור הוספת תנאי - עכשיו הוא תמיד יישאר גלוי ולא ייחתך לעולם */}
             <div className="pt-2">
               <button 
                 onClick={handleAddCondition}
@@ -207,7 +214,32 @@ export default function CreateCorrelationRulePage() {
                 <option>10 Minutes</option>
                 <option>30 Minutes</option>
                 <option>1 Hour</option>
+                <option>Other</option>
               </select>
+
+              {/* קלט מפוצל למספר ויחידת זמן כפי שביקשת */}
+              {timeWindow === 'Other' && (
+                <div className="flex items-center gap-2 mt-1 animate-fadeIn">
+                  <input 
+                    type="number" 
+                    min="1"
+                    value={customTimeValue}
+                    onChange={(e) => setCustomTimeValue(e.target.value)}
+                    placeholder="e.g. 45"
+                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:border-indigo-500 outline-none transition-colors placeholder:text-slate-600"
+                  />
+                  <select 
+                    value={customTimeUnit}
+                    onChange={(e) => setCustomTimeUnit(e.target.value)}
+                    className="w-32 shrink-0 bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-indigo-500 cursor-pointer"
+                  >
+                    <option>Seconds</option>
+                    <option>Minutes</option>
+                    <option>Hours</option>
+                    <option>Days</option>
+                  </select>
+                </div>
+              )}
             </div>
 
             <div className="flex flex-col gap-2">
