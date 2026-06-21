@@ -8,6 +8,7 @@ returns the ranked precedents. No LLM is involved — this is pure retrieval.
 import uuid
 from dataclasses import dataclass
 
+from sqlalchemy import text
 from sqlmodel import Session, select
 
 from app.core.config import settings
@@ -49,6 +50,17 @@ def search(
     alert never matches its own indexed chunk.
     """
     query_vec = embedding_service.embed_query(query_text)
+
+    # Widen the HNSW search beam for this transaction. The default (40) yields
+    # poor recall when the corpus contains many near-duplicate vectors — the
+    # greedy walk stalls in that cluster and never reaches the real nearest
+    # neighbours. SET LOCAL auto-resets at transaction end, so it can't leak to
+    # other requests sharing the pooled connection.
+    session.exec(
+        text("SET LOCAL hnsw.ef_search = :ef").bindparams(
+            ef=settings.RAG_HNSW_EF_SEARCH
+        )
+    )
 
     # pgvector cosine_distance is 1 - cosine_similarity. Fetch a few extra rows
     # so that excluding the alert's own chunk still leaves up to top_k results.
