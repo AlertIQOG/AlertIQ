@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     # Retrieval tuning
     RAG_TOP_K: int = 5
     RAG_RELEVANCE_FLOOR: float = 0.5
+    # HNSW search breadth. pgvector's default (40) collapses recall when the
+    # corpus holds many near-identical vectors (e.g. repeated test alerts): the
+    # greedy graph walk gets trapped in that cluster and misses the true nearest
+    # neighbours. Must be >= the query LIMIT; higher = better recall, slower.
+    RAG_HNSW_EF_SEARCH: int = 200
 
     # Future: Auth, etc.
     # SECRET_KEY: str = ""
