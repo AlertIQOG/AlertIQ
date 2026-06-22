@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import AlertsTable from './components/AlertsTable';
 import ColumnPicker from './components/ColumnPicker';
 import { aggregateAlerts, fetchAlerts, updateAlertStatus } from './services/alertsApi';
@@ -11,10 +12,11 @@ import PageHeader from './components/PageHeader';
 import { DEFAULT_VISIBLE_KEYS, STORAGE_KEY } from './data/columnConfig';
 
 export default function Home() {
+  const router = useRouter();
   // State for filters
   const [sevFilter, setSevFilter] = useState('ALL');
   const [envFilter, setEnvFilter] = useState('ALL');
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('Open');
 
   // State for alerts data and loading indicators
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -221,6 +223,7 @@ export default function Home() {
           onSuccess={() => {
             setShowPromoteModal(false);
             setSelectedAlertIds(new Set());
+            router.push('/incidents');
           }}
         />
       )}

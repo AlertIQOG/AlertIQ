@@ -36,17 +36,7 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const formatDateTime = (dateString?: string) => {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleString([], {
-      month: 'short', day: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    });
+    return new Date(dateString).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
   };
 
   // Empty state check
@@ -173,7 +163,7 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
       className: 'w-32 text-right',
       renderCell: (alert) => (
         <span className="text-xs text-slate-400">
-          {formatDateTime(alert.updated_at)}
+          {formatDate(alert.updated_at)}
         </span>
       )
     },

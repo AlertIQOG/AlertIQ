@@ -3,9 +3,9 @@ import React from 'react';
 // Definitions for the DataTable component, which is a reusable table component that can display any type of data based on the provided column definitions and data array.
 export interface ColumnDef<T> {
   header: React.ReactNode;
-  accessor?: keyof T;
-  renderCell?: (row: T) => React.ReactNode;
-  className?: string;
+  accessor?: keyof T; // Which property of the data object to display in this column (if renderCell is not provided)
+  renderCell?: (row: T) => React.ReactNode; // A custom function for rendering the cell (like a button or tag)
+  className?: string; // Additional CSS classes (for example, to set the column width w-24)
 }
 
 interface DataTableProps<T> {
