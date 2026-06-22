@@ -67,7 +67,9 @@ export default function IncidentsPage() {
       header: 'ID',
       className: 'w-28',
       renderCell: (row) => (
-        <span className="text-xs font-mono text-slate-500">#{row.id}</span>
+        <span className="text-xs font-mono text-slate-500">
+          #{row.id.length > 12 ? row.id.slice(0, 8).toUpperCase() : row.id}
+        </span>
       ),
     },
     {

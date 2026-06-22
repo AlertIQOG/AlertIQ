@@ -6,10 +6,12 @@ import { ALL_COLUMNS, DEFAULT_VISIBLE_KEYS } from '../data/columnConfig';
 interface AlertsTableProps {
   alerts: Alert[];
   onRowClick: (alert: Alert) => void;
-  visibleColumns?: string[];  // ordered list of column keys to show
+  visibleColumns?: string[];
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
 }
 
-export default function AlertsTable({ alerts, onRowClick, visibleColumns }: AlertsTableProps) {
+export default function AlertsTable({ alerts, onRowClick, visibleColumns, selectedIds, onToggleSelect }: AlertsTableProps) {
   
   // Helper functions — kept exactly as they were
   const getSeverityStyles = (severity: string) => {
@@ -82,7 +84,14 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns }: Aler
       header: 'Message',
       renderCell: (alert) => (
         <>
-          <div className="font-medium text-white">{alert.message}</div>
+          <div className="font-medium text-white flex items-center gap-2">
+            {alert.isAggregated && (
+              <span className="inline-flex items-center gap-1 text-[9px] bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-1.5 py-0.5 rounded font-bold shrink-0">
+                <i className="fas fa-layer-group"></i> AGG · {alert.childCount}
+              </span>
+            )}
+            {alert.message}
+          </div>
           <div className="text-xs text-slate-500 mt-0.5">ID: {alert.external_id}</div>
         </>
       )
@@ -185,5 +194,42 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns }: Aler
     )
   });
 
-  return <DataTable columns={alertColumns} data={alerts} onRowClick={onRowClick} />;
+  // Prepend checkbox column when selection is enabled
+  if (onToggleSelect) {
+    alertColumns.unshift({
+      header: '',
+      className: 'w-10',
+      renderCell: (alert) => (
+        <div
+          onClick={(e) => { e.stopPropagation(); onToggleSelect(alert.id); }}
+          className="flex items-center justify-center"
+        >
+          <div className={`w-4 h-4 rounded border flex items-center justify-center cursor-pointer transition-colors ${
+            selectedIds?.has(alert.id)
+              ? 'bg-indigo-500 border-indigo-500'
+              : 'border-slate-600 hover:border-slate-400'
+          }`}>
+            {selectedIds?.has(alert.id) && (
+              <i className="fas fa-check text-white text-[8px]"></i>
+            )}
+          </div>
+        </div>
+      ),
+    });
+  }
+
+  return (
+    <DataTable
+      columns={alertColumns}
+      data={alerts}
+      onRowClick={onRowClick}
+      rowClassName={(alert) =>
+        alert.isAggregated
+          ? 'border-l-2 border-indigo-500/60 bg-indigo-950/20'
+          : selectedIds?.has(alert.id)
+            ? 'bg-slate-800/60'
+            : ''
+      }
+    />
+  );
 }

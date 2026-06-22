@@ -23,4 +23,5 @@ export interface Alert {
   created_at?: string;
   updated_at?: string;
   isAggregated?: boolean;
+  childCount?: number;
 }

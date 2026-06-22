@@ -2,6 +2,16 @@ import { Alert } from '../types/alert';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
+function normalizeAlert(raw: unknown): Alert {
+  const r = raw as Record<string, unknown>;
+  const extra = (r.extra_fields as Record<string, unknown>) ?? {};
+  return {
+    ...(raw as Alert),
+    isAggregated: (extra._is_aggregated as boolean) ?? false,
+    childCount: (extra._child_count as number) ?? 0,
+  };
+}
+
 export async function fetchAlerts(
   skip: number = 0,
   limit: number = 100,
@@ -31,11 +41,26 @@ export async function fetchAlerts(
     }
 
     const data = await response.json();
-    return data as Alert[];
+    return (data as unknown[]).map(normalizeAlert);
 
   } catch (error) {
     console.error('Error fetching alerts from backend:', error);
     return [];
+  }
+}
+
+export async function aggregateAlerts(alertIds: string[], title?: string): Promise<Alert | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/alerts/aggregate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alert_ids: alertIds, title }),
+    });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return normalizeAlert(await response.json());
+  } catch (error) {
+    console.error('Error aggregating alerts:', error);
+    return null;
   }
 }
 

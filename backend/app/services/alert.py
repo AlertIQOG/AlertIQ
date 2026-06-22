@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.core.exceptions import ConflictError
-from app.models.alert import Alert, AlertStatus
+from app.models.alert import Alert, AlertSeverity, AlertStatus
 from app.schemas.alert import AlertCreate
 from app.services.base import CRUDBase
 
@@ -96,6 +96,62 @@ class AlertService(CRUDBase[Alert]):
         session.commit()
         session.refresh(alert)
         return alert, True
+
+
+    def aggregate(
+        self,
+        session: Session,
+        *,
+        alert_ids: list[uuid.UUID],
+        title: str | None = None,
+    ) -> Alert:
+        """
+        Group multiple alerts into a single aggregated alert.
+
+        Creates a new alert that summarises all children, marks the
+        originals as Dismissed, and stores child IDs in extra_fields.
+        """
+        children = [self.get(session, id=aid) for aid in alert_ids]
+        children = [a for a in children if a is not None]
+        if not children:
+            from app.core.exceptions import NotFoundError
+            raise NotFoundError("Alert", str(alert_ids[0]) if alert_ids else "unknown")
+
+        severity_order = [
+            AlertSeverity.CRITICAL,
+            AlertSeverity.ERROR,
+            AlertSeverity.WARNING,
+            AlertSeverity.INFO,
+        ]
+        highest = next(
+            (s for s in severity_order if any(a.severity == s for a in children)),
+            AlertSeverity.INFO,
+        )
+
+        agg_message = title or f"Aggregated: {len(children)} alerts — {children[0].message[:80]}"
+
+        aggregated = Alert(
+            source_id=children[0].source_id,
+            external_id=str(uuid.uuid4()),
+            message=agg_message,
+            application=children[0].application,
+            region=children[0].region,
+            severity=highest,
+            status=AlertStatus.OPEN,
+            extra_fields={
+                "_is_aggregated": True,
+                "_child_ids": [str(a.id) for a in children],
+                "_child_count": len(children),
+            },
+        )
+        session.add(aggregated)
+
+        for child in children:
+            child.status = AlertStatus.DISMISSED
+
+        session.commit()
+        session.refresh(aggregated)
+        return aggregated
 
 
 alert_service = AlertService(Alert)
