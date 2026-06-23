@@ -102,7 +102,9 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
         <div className="h-6 w-px bg-slate-800"></div>
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-slate-500 font-bold font-mono">#{incident.id}</span>
+            <span className="text-[10px] text-slate-500 font-bold font-mono">
+              #{incident.id.length > 12 ? incident.id.slice(0, 8).toUpperCase() : incident.id}
+            </span>
             <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${PRIORITY_STYLES[incident.priority]}`}>
               {incident.priority}
             </span>
@@ -186,10 +188,14 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
                   </div>
                 </div>
 
-                {incident.source === 'alert' && incident.linkedAlertTitle && (
+                {incident.source === 'alert' && (incident.linkedAlertTitle || incident.linkedAlertId) && (
                   <div className="bg-slate-950/50 p-4 rounded-lg border border-slate-800">
                     <div className="text-xs text-slate-500 uppercase font-bold mb-1">Triggered by Alert</div>
-                    <div className="text-white font-medium text-sm">{incident.linkedAlertTitle}</div>
+                    <div className="text-white font-medium text-sm">
+                      {incident.linkedAlertTitle ?? (
+                        <span className="font-mono text-slate-400 text-xs">{incident.linkedAlertId}</span>
+                      )}
+                    </div>
                   </div>
                 )}
 

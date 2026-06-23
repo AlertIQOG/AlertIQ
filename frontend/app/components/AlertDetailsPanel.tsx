@@ -9,9 +9,10 @@ interface AlertDetailsPanelProps {
   onClose: () => void;
   onStatusChange: (alertId: string, newStatus: string) => void;
   onAlertUpdate?: (updated: Alert) => void;
+  onPromote?: (alert: Alert) => void;
 }
 
-export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAlertUpdate }: AlertDetailsPanelProps) {
+export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAlertUpdate, onPromote }: AlertDetailsPanelProps) {
   const [noteText, setNoteText] = useState('');
   const [notes, setNotes] = useState<AlertNote[]>(
     (alert.extra_fields?._notes as AlertNote[]) ?? []
@@ -222,7 +223,10 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
               <button className="bg-purple-500/10 border border-purple-500/30 text-purple-400 hover:bg-purple-500/20 py-2.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2">
                 <i className="fas fa-magic"></i> AI Analysis
               </button>
-              <button className="bg-slate-800 border border-slate-700 text-white hover:bg-slate-700 py-2.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2">
+              <button
+                onClick={() => onPromote?.(alert)}
+                className="bg-slate-800 border border-slate-700 text-white hover:bg-slate-700 py-2.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2"
+              >
                 <i className="fas fa-arrow-up"></i> Promote
               </button>
             </div>

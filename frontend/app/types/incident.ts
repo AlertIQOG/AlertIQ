@@ -9,6 +9,7 @@ export interface Incident {
   stage: IncidentStage;
   createdAt: string;
   source: 'alert' | 'manual';
+  linkedAlertId?: string;
   linkedAlertTitle?: string;
   notes: string;
   affectedServices: string[];

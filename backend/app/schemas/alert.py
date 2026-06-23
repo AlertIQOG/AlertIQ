@@ -64,6 +64,13 @@ class AlertUpdate(BaseModel):
     extra_fields: dict[str, Any] | None = None
 
 
+class AggregateRequest(BaseModel):
+    """Payload for grouping multiple alerts into one aggregated alert."""
+
+    alert_ids: list[uuid.UUID]
+    title: str | None = None
+
+
 class AlertRead(BaseModel):
     """Schema returned to the client — never exposes the raw DB model."""
 
