@@ -1,42 +1,61 @@
 "use client";
 
-import { useState } from 'react';
-import Link from 'next/link';
-import CorrelationRulesTable from './components/CorrelationRulesTable';
-import { CorrelationRule } from '../types/correlation';
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import CorrelationRulesTable from "./components/CorrelationRulesTable";
+import { CorrelationRule } from "../types/correlation";
 
-const MOCK_RULES: CorrelationRule[] = [
-  {
-    id: '1',
-    name: 'DB High CPU + Errors',
-    isActive: true,
-    logicSummary: { source: 'Prometheus', condition: 'CPU > 90%' },
-    timeWindow: '5 mins',
-    lastTriggered: '2m ago'
-  },
-  {
-    id: '2',
-    name: 'Multiple Login Failures',
-    isActive: false,
-    logicSummary: { source: 'Auth0', condition: 'Count > 5' },
-    timeWindow: '10 mins',
-    lastTriggered: '1d ago'
-  }
-];
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 export default function CorrelationRulesPage() {
-  const [rules, setRules] = useState<CorrelationRule[]>(MOCK_RULES);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [rules, setRules] = useState<CorrelationRule[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    const fetchRules = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/correlation-rules`);
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch correlation rules");
+        }
+
+        const data = await response.json();
+
+        const mappedRules: CorrelationRule[] = data.map((rule: any) => ({
+          id: rule.id,
+          name: rule.name,
+          isActive: rule.enabled,
+          logicSummary: {
+            source: rule.scope?.source || "N/A",
+            condition:
+              rule.conditions?.[0]
+                ? `${rule.conditions[0].field} ${rule.conditions[0].operator} ${rule.conditions[0].value ?? ""}`
+                : "No conditions",
+          },
+          timeWindow: `${rule.time_window_minutes} mins`,
+          lastTriggered: "Never",
+        }));
+
+        setRules(mappedRules);
+      } catch (error) {
+        console.error("Error fetching correlation rules:", error);
+        setRules([]);
+      }
+    };
+
+    fetchRules();
+  }, []);
 
   const handleToggleActive = (ruleId: string, currentStatus: boolean) => {
-    setRules(prevRules =>
-      prevRules.map(rule =>
+    setRules((prevRules) =>
+      prevRules.map((rule) =>
         rule.id === ruleId ? { ...rule, isActive: !currentStatus } : rule
       )
     );
   };
 
-  const filteredRules = rules.filter(rule => 
+  const filteredRules = rules.filter((rule) =>
     rule.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 

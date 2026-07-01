@@ -88,7 +88,7 @@ export default function CreateCorrelationRulePage() {
     group_by: ["service", "host"],
   };
 
-  const response = await fetch("http://localhost:8000/api/v1/correlation-rules", {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/correlation-rules`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
