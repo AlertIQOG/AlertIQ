@@ -44,19 +44,64 @@ export default function CreateCorrelationRulePage() {
     ));
   };
 
-  const handleSaveRule = () => {
-    // Determine the final time window value based on user selection
-    const finalTimeWindow = timeWindow === 'Other' 
-      ? `${customTimeValue} ${customTimeUnit}` 
-      : timeWindow;
-
-    console.log({
-      ruleName,
-      timeWindow: finalTimeWindow,
-      conditions
-    });
-    router.push('/correlation');
+  const mapOperator = (operator: string) => {
+    switch (operator) {
+      case "Equals":
+        return "equals";
+      case "Not equals":
+        return "not_equals";
+      case "Contains":
+        return "contains";
+      case "Greater than":
+        return "greater_than";
+      case "Less than":
+        return "less_than";
+      case "Greater or equal":
+        return "greater_or_equal";
+      case "Less or equal":
+        return "less_or_equal";
+      default:
+        return "equals";
+    }
   };
+
+  const handleSaveRule = async () => {
+  const finalTimeWindow =
+    timeWindow === "Other"
+      ? Number(customTimeValue)
+      : Number(timeWindow.split(" ")[0]);
+
+  const payload = {
+    name: ruleName,
+    description: "",
+    enabled: true,
+    scope: {
+      source: "Prometheus",
+      environment: "Production",
+    },
+    conditions: conditions.map((condition) => ({
+      field: condition.metric,
+      operator: mapOperator(condition.operator),
+      value: condition.value,
+    })),
+    time_window_minutes: finalTimeWindow,
+    group_by: ["service", "host"],
+  };
+
+  const response = await fetch("http://localhost:8000/api/v1/correlation-rules", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to create correlation rule");
+  }
+
+  router.push("/correlation");
+};
 
   return (
     <main className="flex-1 relative flex flex-col h-full overflow-hidden bg-slate-950">
