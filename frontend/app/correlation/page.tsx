@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import CorrelationRulesTable from "./components/CorrelationRulesTable";
 import { CorrelationRule } from "../types/correlation";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+import { apiFetch } from "../services/apiClient";
 
 export default function CorrelationRulesPage() {
   const [rules, setRules] = useState<CorrelationRule[]>([]);
@@ -14,7 +13,7 @@ export default function CorrelationRulesPage() {
   useEffect(() => {
     const fetchRules = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/correlation-rules`);
+        const response = await apiFetch("/correlation-rules");
 
         if (!response.ok) {
           throw new Error("Failed to fetch correlation rules");

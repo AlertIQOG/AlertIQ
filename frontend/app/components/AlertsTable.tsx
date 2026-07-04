@@ -140,6 +140,22 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
         </span>
       )
     },
+    assignee: {
+      header: 'Assignee',
+      className: 'w-28',
+      renderCell: (alert) => (
+        alert.assignee ? (
+          <span className="inline-flex items-center gap-1.5 text-xs text-slate-300">
+            <span className="w-5 h-5 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-[9px] font-bold text-white">
+              {alert.assignee.slice(0, 2).toUpperCase()}
+            </span>
+            {alert.assignee}
+          </span>
+        ) : (
+          <span className="text-xs text-slate-500">Unassigned</span>
+        )
+      )
+    },
     external_id: {
       header: 'External ID',
       className: 'w-36',

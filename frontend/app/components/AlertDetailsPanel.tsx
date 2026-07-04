@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { Alert, AlertNote } from './../types/alert';
-import { addAlertNote, updateAlertNote, deleteAlertNote } from '../services/alertsApi';
+import { addAlertNote, updateAlertNote, deleteAlertNote, updateAlertAssignee } from '../services/alertsApi';
+import { getStoredUser } from '../services/apiClient';
 
 interface AlertDetailsPanelProps {
   alert: Alert;
@@ -20,6 +21,22 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
   const [saving, setSaving] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
+  const [assignee, setAssignee] = useState<string | null>(alert.assignee ?? null);
+  const [assigning, setAssigning] = useState(false);
+
+  const currentUsername = getStoredUser()?.username ?? null;
+
+  const handleToggleAssign = async () => {
+    if (!currentUsername) return;
+    setAssigning(true);
+    const next = assignee === currentUsername ? null : currentUsername;
+    const updated = await updateAlertAssignee(alert.id, next);
+    if (updated) {
+      setAssignee(updated.assignee ?? null);
+      onAlertUpdate?.(updated);
+    }
+    setAssigning(false);
+  };
 
   const getSeverityBadge = (severity: string) => {
     const s = severity.toLowerCase();
@@ -128,9 +145,24 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
             </div>
             <div>
               <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">Assignee</label>
-              <div className="bg-slate-900 border border-slate-700 rounded-lg p-2 flex items-center justify-between">
-                <span className="text-sm text-white font-medium pl-1">Unassigned</span>
-                <div className="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center text-[10px] text-slate-400">?</div>
+              <div className="bg-slate-900 border border-slate-700 rounded-lg p-2 flex items-center justify-between gap-2">
+                <span className={`text-sm font-medium pl-1 truncate ${assignee ? 'text-white' : 'text-slate-500'}`}>
+                  {assignee || 'Unassigned'}
+                </span>
+                <button
+                  onClick={handleToggleAssign}
+                  disabled={assigning || !currentUsername}
+                  title={assignee === currentUsername ? 'Unassign from me' : 'Assign to me'}
+                  className="shrink-0 text-[10px] font-bold px-2 py-1 rounded border border-indigo-500/30 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                >
+                  {assigning ? (
+                    <i className="fas fa-spinner fa-spin"></i>
+                  ) : assignee === currentUsername ? (
+                    'UNASSIGN'
+                  ) : (
+                    'ASSIGN TO ME'
+                  )}
+                </button>
               </div>
             </div>
           </div>
