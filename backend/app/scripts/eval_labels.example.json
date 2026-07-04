@@ -1,0 +1,16 @@
+[
+  {
+    "_comment": "Each entry is one query alert and the source_ids that SHOULD rank in its top-k. Copy this file to eval_labels.json and replace the UUIDs with real ones from your DB (e.g. SELECT id FROM alerts; SELECT source_id FROM rag_chunks).",
+    "alert_id": "00000000-0000-0000-0000-000000000000",
+    "relevant_source_ids": [
+      "11111111-1111-1111-1111-111111111111",
+      "22222222-2222-2222-2222-222222222222"
+    ]
+  },
+  {
+    "alert_id": "33333333-3333-3333-3333-333333333333",
+    "relevant_source_ids": [
+      "44444444-4444-4444-4444-444444444444"
+    ]
+  }
+]
