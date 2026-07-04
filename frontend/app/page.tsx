@@ -1,23 +1,61 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import AlertsTable from './components/AlertsTable';
-import { fetchAlerts, updateAlertStatus } from './services/alertsApi';
+import ColumnPicker from './components/ColumnPicker';
+import { aggregateAlerts, fetchAlerts, updateAlertStatus } from './services/alertsApi';
 import { Alert } from './types/alert';
 import AlertDetailsPanel from './components/AlertDetailsPanel';
+import PromoteToIncidentModal from './components/PromoteToIncidentModal';
 import PageHeader from './components/PageHeader';
+import { DEFAULT_VISIBLE_KEYS, STORAGE_KEY } from './data/columnConfig';
 
 export default function Home() {
+  const router = useRouter();
   // State for filters
   const [sevFilter, setSevFilter] = useState('ALL');
   const [envFilter, setEnvFilter] = useState('ALL');
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('Open');
 
   // State for alerts data and loading indicators
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isFetching, setIsFetching] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
+  const [selectedAlertIds, setSelectedAlertIds] = useState<Set<string>>(new Set());
+  const [showPromoteModal, setShowPromoteModal] = useState(false);
+  const [isAggregating, setIsAggregating] = useState(false);
+
+  // ── Column visibility state with localStorage persistence ────
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(DEFAULT_VISIBLE_KEYS);
+  const [columnsLoaded, setColumnsLoaded] = useState(false);
+
+  // Load saved column preferences on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setVisibleColumns(parsed);
+        }
+      }
+    } catch {
+      // If parsing fails, use defaults silently
+    }
+    setColumnsLoaded(true);
+  }, []);
+
+  // Persist column preferences whenever they change
+  const handleColumnsChange = useCallback((columns: string[]) => {
+    setVisibleColumns(columns);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(columns));
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
 
   useEffect(() => {
     const loadAlerts = async () => {
@@ -34,6 +72,30 @@ export default function Home() {
     setSevFilter('ALL');
     setEnvFilter('ALL');
     setStatusFilter('ALL');
+  };
+
+  const handleToggleSelect = useCallback((id: string) => {
+    setSelectedAlertIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const refreshAlerts = useCallback(async () => {
+    const data = await fetchAlerts(0, 100, sevFilter, statusFilter, envFilter);
+    setAlerts(data);
+  }, [sevFilter, statusFilter, envFilter]);
+
+  const handleAggregate = async () => {
+    if (selectedAlertIds.size < 2) return;
+    setIsAggregating(true);
+    const result = await aggregateAlerts(Array.from(selectedAlertIds));
+    setIsAggregating(false);
+    if (result) {
+      await refreshAlerts();
+      setSelectedAlertIds(new Set());
+    }
   };
 
   const handleStatusChange = async (alertId: string, newStatus: string) => {
@@ -83,6 +145,17 @@ export default function Home() {
             </select>
 
             <button onClick={handleReset} className="text-slate-400 hover:text-white text-xs font-medium px-2 transition">Reset</button>
+
+            {/* Spacer to push Column Picker to the right */}
+            <div className="flex-1" />
+
+            {/* Column Configuration Picker */}
+            {columnsLoaded && (
+              <ColumnPicker
+                visibleColumns={visibleColumns}
+                onColumnsChange={handleColumnsChange}
+              />
+            )}
           </div>
 
           {/* Logic for displaying data */}
@@ -98,11 +171,62 @@ export default function Home() {
                   <i className="fas fa-circle-notch fa-spin text-2xl text-indigo-500"></i>
                 </div>
               )}
-              <AlertsTable alerts={alerts} onRowClick={(alert) => setSelectedAlert(alert)} />
+              <AlertsTable
+                alerts={alerts}
+                onRowClick={(alert) => setSelectedAlert(alert)}
+                visibleColumns={visibleColumns}
+                selectedIds={selectedAlertIds}
+                onToggleSelect={handleToggleSelect}
+              />
             </div>
           )}
         </div>
       </main>
+
+      {/* Floating bulk-action bar */}
+      {selectedAlertIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-slate-800 border border-slate-700 rounded-2xl px-5 py-3 shadow-2xl shadow-black/50">
+          <span className="text-sm text-white font-medium">
+            {selectedAlertIds.size} alert{selectedAlertIds.size > 1 ? 's' : ''} selected
+          </span>
+          <div className="w-px h-5 bg-slate-700" />
+          <button
+            onClick={handleAggregate}
+            disabled={selectedAlertIds.size < 2 || isAggregating}
+            className="text-sm px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            <i className="fas fa-layer-group text-xs"></i>
+            {isAggregating ? 'Grouping…' : 'Group as Aggregated'}
+          </button>
+          <button
+            onClick={() => setShowPromoteModal(true)}
+            className="text-sm px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition flex items-center gap-2"
+          >
+            <i className="fas fa-arrow-up text-xs"></i>
+            Promote to Incident
+          </button>
+          <button
+            onClick={() => setSelectedAlertIds(new Set())}
+            className="text-slate-500 hover:text-white transition ml-1"
+            title="Clear selection"
+          >
+            <i className="fas fa-times"></i>
+          </button>
+        </div>
+      )}
+
+      {/* Promote to Incident modal */}
+      {showPromoteModal && (
+        <PromoteToIncidentModal
+          alerts={alerts.filter(a => selectedAlertIds.has(a.id))}
+          onClose={() => setShowPromoteModal(false)}
+          onSuccess={() => {
+            setShowPromoteModal(false);
+            setSelectedAlertIds(new Set());
+            router.push('/incidents');
+          }}
+        />
+      )}
 
       {/* Alert Details Panel */}
       {selectedAlert && (
@@ -113,6 +237,10 @@ export default function Home() {
           onAlertUpdate={(updated) => {
             setSelectedAlert(updated);
             setAlerts(prev => prev.map(a => a.id === updated.id ? updated : a));
+          }}
+          onPromote={(alert) => {
+            setSelectedAlertIds(new Set([alert.id]));
+            setShowPromoteModal(true);
           }}
         />
       )}

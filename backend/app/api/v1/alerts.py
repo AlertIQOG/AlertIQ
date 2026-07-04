@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, Query, status
 from app.api.v1.dependencies import AlertFilterParams, DbSession, PaginationParams
 from app.core.exceptions import NotFoundError
 from app.models.alert import Alert
-from app.schemas.alert import AlertCreate, AlertRead, AlertUpdate
+from app.schemas.alert import AggregateRequest, AlertCreate, AlertRead, AlertUpdate
 from app.schemas.rag import (
     CopilotCitation,
     CopilotResponse,
@@ -59,6 +59,12 @@ def list_alerts(
         skip=pagination.skip,
         limit=pagination.limit,
     )
+@router.post("/aggregate", response_model=AlertRead, status_code=status.HTTP_201_CREATED)
+def aggregate_alerts(*, session: DbSession, body: AggregateRequest) -> AlertRead:
+    """Group multiple alerts into one aggregated alert and dismiss the originals."""
+    return alert_service.aggregate(session, alert_ids=body.alert_ids, title=body.title)
+
+
 @router.get("/{alert_id}", response_model=AlertRead)
 def get_alert(*, session: DbSession, alert_id: uuid.UUID) -> AlertRead:
     """Retrieve a single alert by its UUID."""

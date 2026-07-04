@@ -15,9 +15,10 @@ interface AlertDetailsPanelProps {
   onClose: () => void;
   onStatusChange: (alertId: string, newStatus: string) => void;
   onAlertUpdate?: (updated: Alert) => void;
+  onPromote?: (alert: Alert) => void;
 }
 
-export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAlertUpdate }: AlertDetailsPanelProps) {
+export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAlertUpdate, onPromote }: AlertDetailsPanelProps) {
   const [noteText, setNoteText] = useState('');
   const [notes, setNotes] = useState<AlertNote[]>(
     (alert.extra_fields?._notes as AlertNote[]) ?? []
@@ -334,6 +335,17 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Actions */}
+          <div className="pt-2">
+            <label className="block text-[10px] font-bold text-slate-500 mb-2 uppercase">Actions</label>
+            <button
+              onClick={() => onPromote?.(alert)}
+              className="w-full bg-slate-800 border border-slate-700 text-white hover:bg-slate-700 py-2.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2"
+            >
+              <i className="fas fa-arrow-up"></i> Promote
+            </button>
           </div>
 
         </div>
