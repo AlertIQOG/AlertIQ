@@ -13,7 +13,7 @@ class NotificationMessage(BaseModel):
     body: str = Field(min_length=1)
 
 
-class TestNotificationRequest(NotificationMessage):
+class SendNotificationRequest(NotificationMessage):
     channels: list[NotificationChannelName] = Field(
         default_factory=lambda: list(DEFAULT_CHANNELS)
     )
@@ -26,5 +26,5 @@ class ChannelResult(BaseModel):
     detail: str
 
 
-class TestNotificationResponse(BaseModel):
+class SendNotificationResponse(BaseModel):
     results: list[ChannelResult]
