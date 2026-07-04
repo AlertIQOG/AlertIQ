@@ -15,3 +15,8 @@ mypy
 # Database
 sqlmodel
 psycopg2-binary
+
+# Auth
+pyjwt
+bcrypt
+python-multipart

@@ -23,7 +23,12 @@ class SourceUpdate(BaseModel):
 
 
 class SourceRead(BaseModel):
-    """Schema returned to the client."""
+    """Schema returned to the client.
+
+    Includes ``webhook_secret`` so operators can configure the sending
+    provider (Grafana / Alertmanager). The sources API itself requires
+    authentication, so the secret is only visible to logged-in users.
+    """
 
     model_config = {"from_attributes": True}
 
@@ -31,5 +36,6 @@ class SourceRead(BaseModel):
     name: str
     provider_type: str
     is_active: bool
+    webhook_secret: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
