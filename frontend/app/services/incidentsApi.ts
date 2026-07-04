@@ -86,6 +86,7 @@ function normalizeIncident(raw: Record<string, unknown>): Incident {
     stage: raw.stage as Incident['stage'],
     assignee: raw.assignee as string,
     source: raw.source as Incident['source'],
+    linkedAlertId: raw.linked_alert_id as string | undefined,
     linkedAlertTitle: undefined,
     notes: (raw.notes as string) ?? '',
     affectedServices: (raw.affected_services as string[]) ?? [],
@@ -105,5 +106,6 @@ function denormalizeIncident(incident: Partial<Incident>): Record<string, unknow
   if (incident.source !== undefined) result.source = incident.source;
   if (incident.notes !== undefined) result.notes = incident.notes;
   if (incident.affectedServices !== undefined) result.affected_services = incident.affectedServices;
+  if (incident.linkedAlertId !== undefined) result.linked_alert_id = incident.linkedAlertId;
   return result;
 }
