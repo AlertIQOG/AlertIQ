@@ -2,7 +2,13 @@
 
 import { useState } from 'react';
 import { Alert, AlertNote } from './../types/alert';
-import { addAlertNote, updateAlertNote, deleteAlertNote } from '../services/alertsApi';
+import { CopilotSuggestion } from '../types/copilot';
+import {
+  addAlertNote,
+  updateAlertNote,
+  deleteAlertNote,
+  fetchCopilotSuggestion,
+} from '../services/alertsApi';
 
 interface AlertDetailsPanelProps {
   alert: Alert;
@@ -20,6 +26,31 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
   const [saving, setSaving] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
+
+  const [copilot, setCopilot] = useState<CopilotSuggestion | null>(null);
+  const [copilotLoading, setCopilotLoading] = useState(false);
+  const [copilotError, setCopilotError] = useState<string | null>(null);
+
+  const loadCopilot = async (force: boolean) => {
+    setCopilotLoading(true);
+    setCopilotError(null);
+    const result = await fetchCopilotSuggestion(alert.id, force);
+    if (result) {
+      setCopilot(result);
+    } else {
+      setCopilotError('Could not generate a suggestion. Is the copilot configured?');
+    }
+    setCopilotLoading(false);
+  };
+
+  const confidenceBadge = (c: string | null) => {
+    if (c === 'high') return 'text-green-400 border-green-500/30 bg-green-500/10';
+    if (c === 'medium') return 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10';
+    return 'text-slate-400 border-slate-600 bg-slate-800';
+  };
+
+  const citationByNumber = (n: number) =>
+    copilot?.citations.find((c) => c.number === n) ?? null;
 
   const getSeverityBadge = (severity: string) => {
     const s = severity.toLowerCase();
@@ -216,20 +247,105 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
             )}
           </div>
 
+          {/* Resolution Copilot */}
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">Resolution Copilot</label>
+            <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 space-y-3">
+
+              {!copilot && (
+                <button
+                  onClick={() => loadCopilot(false)}
+                  disabled={copilotLoading}
+                  className="w-full bg-purple-500/10 border border-purple-500/30 text-purple-300 hover:bg-purple-500/20 disabled:opacity-40 disabled:cursor-not-allowed py-2.5 rounded-md text-sm font-medium transition flex items-center justify-center gap-2"
+                >
+                  <i className={`fas ${copilotLoading ? 'fa-spinner fa-spin' : 'fa-magic'} text-xs`}></i>
+                  {copilotLoading ? 'Analyzing...' : 'Generate suggestion'}
+                </button>
+              )}
+
+              {copilotError && (
+                <p className="text-sm text-red-400">{copilotError}</p>
+              )}
+
+              {copilot && !copilot.precedent_found && (
+                <div className="text-sm text-slate-400 flex items-start gap-2">
+                  <i className="fas fa-circle-info mt-0.5"></i>
+                  <span>No similar past alerts found — not enough precedent to suggest a fix.</span>
+                </div>
+              )}
+
+              {copilot && copilot.precedent_found && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
+                    <span className={`px-2 py-1 rounded border ${confidenceBadge(copilot.confidence)}`}>
+                      {copilot.confidence} confidence
+                    </span>
+                    {copilot.cached && (
+                      <span className="px-2 py-1 rounded border border-slate-600 bg-slate-800 text-slate-400">cached</span>
+                    )}
+                  </div>
+
+                  {copilot.diagnosis && (
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-500 mb-1 uppercase">Diagnosis</p>
+                      <p className="text-sm text-slate-200 leading-relaxed">{copilot.diagnosis}</p>
+                    </div>
+                  )}
+
+                  {copilot.steps.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-500 mb-1.5 uppercase">Remediation steps</p>
+                      <ol className="space-y-2">
+                        {copilot.steps.map((step, i) => (
+                          <li key={i} className="text-sm text-slate-300 flex gap-2">
+                            <span className="text-purple-400 font-semibold shrink-0">{i + 1}.</span>
+                            <div className="flex-1">
+                              <span className="leading-relaxed">{step.action}</span>
+                              {step.citations.length > 0 && (
+                                <span className="ml-1.5 inline-flex flex-wrap gap-1 align-middle">
+                                  {step.citations.map((n) => {
+                                    const c = citationByNumber(n);
+                                    return (
+                                      <span
+                                        key={n}
+                                        title={c ? `${c.source_type} · ${(c.similarity * 100).toFixed(0)}% match\n\n${c.preview}` : `Source ${n}`}
+                                        className="px-1.5 py-0.5 rounded bg-purple-500/15 border border-purple-500/30 text-purple-300 text-[10px] font-medium cursor-help"
+                                      >
+                                        [{n}] {c?.source_type ?? 'source'}
+                                      </span>
+                                    );
+                                  })}
+                                </span>
+                              )}
+                            </div>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => loadCopilot(true)}
+                    disabled={copilotLoading}
+                    className="w-full bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-700 text-slate-300 py-2 rounded-md text-sm font-medium transition flex items-center justify-center gap-2"
+                  >
+                    <i className={`fas ${copilotLoading ? 'fa-spinner fa-spin' : 'fa-rotate'} text-xs`}></i>
+                    {copilotLoading ? 'Regenerating...' : 'Regenerate'}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Actions */}
           <div className="pt-2">
             <label className="block text-[10px] font-bold text-slate-500 mb-2 uppercase">Actions</label>
-            <div className="grid grid-cols-2 gap-3">
-              <button className="bg-purple-500/10 border border-purple-500/30 text-purple-400 hover:bg-purple-500/20 py-2.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2">
-                <i className="fas fa-magic"></i> AI Analysis
-              </button>
-              <button
-                onClick={() => onPromote?.(alert)}
-                className="bg-slate-800 border border-slate-700 text-white hover:bg-slate-700 py-2.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2"
-              >
-                <i className="fas fa-arrow-up"></i> Promote
-              </button>
-            </div>
+            <button
+              onClick={() => onPromote?.(alert)}
+              className="w-full bg-slate-800 border border-slate-700 text-white hover:bg-slate-700 py-2.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2"
+            >
+              <i className="fas fa-arrow-up"></i> Promote
+            </button>
           </div>
 
         </div>
