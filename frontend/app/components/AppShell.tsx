@@ -1,14 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import {
-  AuthUser,
-  getStoredUserRaw,
-  getToken,
-  subscribeToSession,
-} from '../services/apiClient';
+import { AuthUser, getStoredUser, getToken } from '../services/apiClient';
 import { logout } from '../services/authApi';
 
 /**
@@ -22,33 +17,42 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
 
-  // localStorage-backed session state; the server snapshot is null so the
-  // first client render after hydration picks up the real values.
-  const token = useSyncExternalStore(subscribeToSession, getToken, () => null);
-  const userRaw = useSyncExternalStore(subscribeToSession, getStoredUserRaw, () => null);
-  const user = useMemo<AuthUser | null>(() => {
-    if (!userRaw) return null;
-    try {
-      return JSON.parse(userRaw) as AuthUser;
-    } catch {
-      return null;
-    }
-  }, [userRaw]);
-
-  const isLoginPage = pathname === '/login';
+  // Read localStorage only after mount to avoid the hydration mismatch
+  // that would fire the redirect effect before the real token is known.
+  const [token, setToken] = useState<string | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    if (!isLoginPage && !token) {
+    setToken(getToken());
+    setUser(getStoredUser());
+    setMounted(true);
+
+    // Keep state in sync when another tab logs out / logs in.
+    const sync = () => {
+      setToken(getToken());
+      setUser(getStoredUser());
+    };
+    window.addEventListener('storage', sync);
+    return () => window.removeEventListener('storage', sync);
+  }, []);
+
+  const isPublicPage = pathname === '/login' || pathname === '/signup';
+
+  useEffect(() => {
+    if (!mounted) return;
+    if (!isPublicPage && !token) {
       router.replace('/login');
     }
-  }, [isLoginPage, token, router]);
+  }, [mounted, isPublicPage, token, router]);
 
-  if (isLoginPage) {
+  if (isPublicPage) {
     return <>{children}</>;
   }
 
-  if (!token) {
-    // No session (or still redirecting) — don't flash the protected UI.
+  // Don't render until we've checked localStorage — prevents a flash of
+  // the unauthenticated state before the redirect fires.
+  if (!mounted || !token) {
     return null;
   }
 

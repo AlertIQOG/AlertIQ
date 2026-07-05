@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { login } from '../services/authApi';
 
 export default function LoginPage() {
@@ -77,6 +78,13 @@ export default function LoginPage() {
             <i className={`fas ${submitting ? 'fa-spinner fa-spin' : 'fa-arrow-right-to-bracket'} text-xs`}></i>
             {submitting ? 'Signing in…' : 'Sign in'}
           </button>
+
+          <p className="text-center text-xs text-slate-500">
+            Don&apos;t have an account?{' '}
+            <Link href="/signup" className="text-indigo-400 hover:text-indigo-300 transition">
+              Sign up
+            </Link>
+          </p>
         </form>
       </div>
     </main>

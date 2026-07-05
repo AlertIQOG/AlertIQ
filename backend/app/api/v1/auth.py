@@ -1,5 +1,5 @@
 """
-Auth endpoints — login and current-user introspection.
+Auth endpoints — registration, login, and current-user introspection.
 
 Uses the OAuth2 password flow so the interactive /docs "Authorize"
 button works out of the box.
@@ -13,10 +13,22 @@ from fastapi.security import OAuth2PasswordRequestForm
 from app.api.v1.dependencies import CurrentUser, DbSession
 from app.core.exceptions import AuthenticationError
 from app.core.security import create_access_token
-from app.schemas.user import Token, UserRead
+from app.schemas.user import Token, UserCreate, UserRead
 from app.services.user import user_service
 
 router = APIRouter()
+
+
+@router.post("/register", response_model=Token, status_code=201)
+def register(
+    *,
+    session: DbSession,
+    payload: UserCreate,
+) -> Token:
+    """Create a new account and return a bearer token (auto-login on signup)."""
+    user = user_service.create_user(session, obj_in=payload)
+    token = create_access_token(user.id, user.role.value)
+    return Token(access_token=token, user=UserRead.model_validate(user))
 
 
 @router.post("/login", response_model=Token)
