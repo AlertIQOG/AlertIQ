@@ -42,6 +42,7 @@ class Alert(SQLModel, table=True):
     region: str | None = Field(default=None)
     node_name: str | None = Field(default=None)
     operator: str | None = Field(default=None)
+    assignee: str | None = Field(default=None, index=True)
     severity: AlertSeverity
     status: AlertStatus = Field(default=AlertStatus.OPEN)
     created_at: datetime | None = Field(

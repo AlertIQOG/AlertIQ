@@ -16,6 +16,8 @@ class Source(SQLModel, table=True):
     name: str = Field(index=True)
     provider_type: str = Field(index=True)
     is_active: bool = Field(default=True)
+    # Shared secret the provider must send as X-Webhook-Token on ingest.
+    webhook_secret: str | None = Field(default=None)
     created_at: datetime | None = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

@@ -61,6 +61,7 @@ class AlertUpdate(BaseModel):
     region: str | None = None
     node_name: str | None = None
     operator: str | None = None
+    assignee: str | None = None
     extra_fields: dict[str, Any] | None = None
 
 
@@ -86,6 +87,7 @@ class AlertRead(BaseModel):
     region: str | None = None
     node_name: str | None = None
     operator: str | None = None
+    assignee: str | None = None
     severity: AlertSeverity
     status: AlertStatus
     extra_fields: dict[str, Any] = Field(default_factory=dict)

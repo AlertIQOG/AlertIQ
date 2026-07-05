@@ -53,6 +53,16 @@ def parse_args() -> argparse.Namespace:
         help="UUID for /ingest/prometheus/{id} (env: ALERTIQ_PROMETHEUS_SOURCE_ID).",
     )
     p.add_argument(
+        "--grafana-token",
+        default=_env("ALERTIQ_GRAFANA_TOKEN"),
+        help="X-Webhook-Token for the Grafana source (env: ALERTIQ_GRAFANA_TOKEN).",
+    )
+    p.add_argument(
+        "--prometheus-token",
+        default=_env("ALERTIQ_PROMETHEUS_TOKEN"),
+        help="X-Webhook-Token for the Prometheus source (env: ALERTIQ_PROMETHEUS_TOKEN).",
+    )
+    p.add_argument(
         "--alerts-per-minute",
         type=float,
         default=float(_env("ALERTIQ_ALERTS_PER_MINUTE", "12")),
@@ -144,10 +154,12 @@ def main() -> int:
             def send(prov: str) -> None:
                 nonlocal count
                 source_id = args.grafana_source_id if prov == "grafana" else args.prometheus_source_id
+                token = args.grafana_token if prov == "grafana" else args.prometheus_token
                 url = _ingest_url(base, prov, source_id)
                 body = build_grafana_webhook() if prov == "grafana" else build_prometheus_webhook()
+                headers = {"X-Webhook-Token": token} if token else None
                 try:
-                    r = client.post(url, json=body)
+                    r = client.post(url, json=body, headers=headers)
                     count += 1
                     ok = r.status_code == 202
                     if ok:

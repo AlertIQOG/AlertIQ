@@ -17,6 +17,7 @@ export interface Alert {
   region?: string;
   node_name?: string;
   operator?: string;
+  assignee?: string;
   severity: AlertSeverity;
   status: AlertStatus;
   extra_fields: Record<string, unknown>;
