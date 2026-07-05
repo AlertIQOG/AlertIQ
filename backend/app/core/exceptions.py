@@ -49,6 +49,20 @@ class AuthorizationError(AppException):
         super().__init__(detail)
 
 
+class ConfigurationError(AppException):
+    """Raised when a required configuration value (e.g. an API key) is missing."""
+
+    def __init__(self, detail: str = "Service is not configured"):
+        super().__init__(detail)
+
+
+class GenerationError(AppException):
+    """Raised when the LLM provider fails to return a usable structured result."""
+
+    def __init__(self, detail: str = "Failed to generate a suggestion"):
+        super().__init__(detail)
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Attach domain-exception → HTTP-response mappings to the app."""
 
@@ -75,3 +89,15 @@ def register_exception_handlers(app: FastAPI) -> None:
         request: Request, exc: AuthorizationError
     ) -> JSONResponse:
         return JSONResponse(status_code=403, content={"detail": exc.detail})
+
+    @app.exception_handler(ConfigurationError)
+    async def _misconfigured(
+        request: Request, exc: ConfigurationError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=503, content={"detail": exc.detail})
+
+    @app.exception_handler(GenerationError)
+    async def _generation_failed(
+        request: Request, exc: GenerationError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=502, content={"detail": exc.detail})

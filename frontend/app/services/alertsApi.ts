@@ -1,4 +1,5 @@
 import { Alert } from '../types/alert';
+import { CopilotSuggestion } from '../types/copilot';
 import { apiFetch } from './apiClient';
 
 function normalizeAlert(raw: unknown): Alert {
@@ -127,4 +128,18 @@ export async function updateAlertNote(alert: Alert, index: number, content: stri
 export async function deleteAlertNote(alert: Alert, index: number): Promise<Alert | null> {
   const notes = ((alert.extra_fields?._notes as { content: string; created_at: string }[]) ?? []).filter((_, i) => i !== index);
   return patchAlertNotes(alert, notes);
+}
+
+export async function fetchCopilotSuggestion(
+  alertId: string,
+  force: boolean = false
+): Promise<CopilotSuggestion | null> {
+  try {
+    const query = force ? '?force=true' : '';
+    const response = await apiFetch(`/alerts/${alertId}/copilot${query}`);
+    return await response.json() as CopilotSuggestion;
+  } catch (error) {
+    console.error('Error fetching copilot suggestion:', error);
+    return null;
+  }
 }
