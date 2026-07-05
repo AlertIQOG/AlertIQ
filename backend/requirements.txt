@@ -17,6 +17,11 @@ sqlmodel
 psycopg2-binary
 pgvector
 
+# Auth
+pyjwt
+bcrypt
+python-multipart
+
 # Resolution Copilot (RAG)
 anthropic          # Claude generation provider
 google-genai       # Gemini generation provider (from google import genai)

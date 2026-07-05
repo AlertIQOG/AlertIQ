@@ -46,6 +46,20 @@ class NotificationError(AppException):
         super().__init__(detail)
 
 
+class AuthenticationError(AppException):
+    """Raised when a request has missing or invalid credentials."""
+
+    def __init__(self, detail: str = "Not authenticated"):
+        super().__init__(detail)
+
+
+class AuthorizationError(AppException):
+    """Raised when an authenticated user lacks permission for an action."""
+
+    def __init__(self, detail: str = "Not authorized to perform this action"):
+        super().__init__(detail)
+
+
 class ConfigurationError(AppException):
     """Raised when a required configuration value (e.g. an API key) is missing."""
 
@@ -70,6 +84,22 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(ConflictError)
     async def _conflict(request: Request, exc: ConflictError) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": exc.detail})
+
+    @app.exception_handler(AuthenticationError)
+    async def _unauthenticated(
+        request: Request, exc: AuthenticationError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": exc.detail},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    @app.exception_handler(AuthorizationError)
+    async def _unauthorized(
+        request: Request, exc: AuthorizationError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=403, content={"detail": exc.detail})
 
     @app.exception_handler(ConfigurationError)
     async def _misconfigured(

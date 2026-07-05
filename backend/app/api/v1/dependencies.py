@@ -2,19 +2,83 @@
 Shared FastAPI dependencies for API v1 routes.
 """
 
+import secrets
 import uuid
 from typing import Annotated, Any
 
-from fastapi import Depends, Query
+from fastapi import Depends, Header, Query
+from fastapi.security import OAuth2PasswordBearer
 from sqlmodel import Session
 
 from app.core.database import get_session
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import AuthenticationError, NotFoundError
+from app.core.security import decode_access_token
 from app.models.alert import AlertSeverity, AlertStatus
+from app.models.user import User
 
 # Re-usable annotated dependency — avoids repeating ``Depends(get_session)``
 # in every single endpoint signature.
 DbSession = Annotated[Session, Depends(get_session)]
+
+# ── Authentication ────────────────────────────────────────────────
+
+# auto_error=False so a missing token raises our domain AuthenticationError
+# (mapped to 401 by the exception handlers) instead of a raw HTTPException.
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
+
+def get_current_user(
+    session: DbSession, token: Annotated[str | None, Depends(oauth2_scheme)]
+) -> User:
+    """Resolve the ``Authorization: Bearer`` JWT into an active ``User``."""
+    if token is None:
+        raise AuthenticationError()
+
+    payload = decode_access_token(token)
+    if payload is None or "sub" not in payload:
+        raise AuthenticationError("Invalid or expired token")
+
+    user = session.get(User, uuid.UUID(payload["sub"]))
+    if user is None or not user.is_active:
+        raise AuthenticationError("User is unknown or inactive")
+    return user
+
+
+CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def verify_webhook_token(
+    source_id: uuid.UUID,
+    session: DbSession,
+    x_webhook_token: Annotated[str | None, Header()] = None,
+) -> uuid.UUID:
+    """
+    Authenticate an ingest webhook against its source's secret.
+
+    Subsumes the source-existence check: raises 404 for an unknown source
+    and 401 for a missing/wrong token (constant-time compare).
+    """
+    from app.services.source import source_service
+
+    source = source_service.get(session, id=source_id)
+    if source is None:
+        raise NotFoundError("Source", str(source_id))
+
+    if source.webhook_secret is None:
+        # Source predates webhook auth and has no secret yet — reject
+        # rather than silently accept unauthenticated traffic.
+        raise AuthenticationError(
+            "Source has no webhook secret configured — set one to enable ingest"
+        )
+
+    if x_webhook_token is None or not secrets.compare_digest(
+        x_webhook_token, source.webhook_secret
+    ):
+        raise AuthenticationError("Invalid webhook token")
+    return source_id
+
+
+ValidWebhookSourceId = Annotated[uuid.UUID, Depends(verify_webhook_token)]
 
 
 class PaginationParams:
@@ -91,6 +155,9 @@ class AlertFilterParams(FilterParams):
         operator: str | None = Query(
             None, description="Filter by assigned operator"
         ),
+        assignee: str | None = Query(
+            None, description="Filter by assigned user (username)"
+        ),
     ) -> None:
         self.severity = severity
         self.status = status
@@ -100,6 +167,7 @@ class AlertFilterParams(FilterParams):
         self.component = component
         self.node_name = node_name
         self.operator = operator
+        self.assignee = assignee
 
 
 # ── Parent-resource validators ────────────────────────────────────

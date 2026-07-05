@@ -1,7 +1,6 @@
 import { Alert } from '../types/alert';
 import { CopilotSuggestion } from '../types/copilot';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+import { apiFetch } from './apiClient';
 
 function normalizeAlert(raw: unknown): Alert {
   const r = raw as Record<string, unknown>;
@@ -30,12 +29,7 @@ export async function fetchAlerts(
     if (status !== 'ALL') params.append('status', status);
     if (region !== 'ALL') params.append('region', region);
 
-    const response = await fetch(`${API_BASE_URL}/alerts/?${params.toString()}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+    const response = await apiFetch(`/alerts/?${params.toString()}`);
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
@@ -52,9 +46,8 @@ export async function fetchAlerts(
 
 export async function aggregateAlerts(alertIds: string[], title?: string): Promise<Alert | null> {
   try {
-    const response = await fetch(`${API_BASE_URL}/alerts/aggregate`, {
+    const response = await apiFetch('/alerts/aggregate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ alert_ids: alertIds, title }),
     });
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -71,11 +64,8 @@ export async function updateAlertStatus(
   retries: number = 1
 ): Promise<Alert | null> {
   try {
-    const response = await fetch(`${API_BASE_URL}/alerts/${alertId}`, {
+    const response = await apiFetch(`/alerts/${alertId}`, {
       method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({ status: newStatus }),
     });
 
@@ -96,11 +86,24 @@ export async function updateAlertStatus(
   }
 }
 
+export async function updateAlertAssignee(alertId: string, assignee: string | null): Promise<Alert | null> {
+  try {
+    const response = await apiFetch(`/alerts/${alertId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ assignee }),
+    });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return normalizeAlert(await response.json());
+  } catch (error) {
+    console.error('Error updating alert assignee:', error);
+    return null;
+  }
+}
+
 async function patchAlertNotes(alert: Alert, notes: { content: string; created_at: string }[]): Promise<Alert | null> {
   try {
-    const response = await fetch(`${API_BASE_URL}/alerts/${alert.id}`, {
+    const response = await apiFetch(`/alerts/${alert.id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ extra_fields: { ...alert.extra_fields, _notes: notes } }),
     });
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -132,17 +135,8 @@ export async function fetchCopilotSuggestion(
   force: boolean = false
 ): Promise<CopilotSuggestion | null> {
   try {
-    const params = new URLSearchParams();
-    if (force) params.append('force', 'true');
-    const query = params.toString();
-    const response = await fetch(
-      `${API_BASE_URL}/alerts/${alertId}/copilot${query ? `?${query}` : ''}`,
-      {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-      }
-    );
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const query = force ? '?force=true' : '';
+    const response = await apiFetch(`/alerts/${alertId}/copilot${query}`);
     return await response.json() as CopilotSuggestion;
   } catch (error) {
     console.error('Error fetching copilot suggestion:', error);

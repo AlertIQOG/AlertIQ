@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     SMTP_USE_TLS: bool = True
     EMAIL_DEFAULT_TO: str = ""  # fallback recipient for the /notifications/send endpoint
 
+    # Auth
+    SECRET_KEY: str = "dev-only-secret-change-me"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
+
     # ── Resolution Copilot (RAG) ──────────────────────────────────────
     # Generation provider switch: "anthropic" or "google". Selects which
     # LLM the copilot uses for generation; embeddings stay on Voyage.
@@ -59,13 +63,13 @@ class Settings(BaseSettings):
     # neighbours. Must be >= the query LIMIT; higher = better recall, slower.
     RAG_HNSW_EF_SEARCH: int = 200
 
-    # Future: Auth, etc.
-    # SECRET_KEY: str = ""
-
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
+        # .env may carry vars for features on other branches (e.g. RAG) —
+        # ignore anything this Settings class doesn't declare.
+        extra="ignore",
     )
 
 

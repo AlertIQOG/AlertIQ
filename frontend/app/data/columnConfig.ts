@@ -84,6 +84,13 @@ export const ALL_COLUMNS: ColumnConfig[] = [
     category: 'metadata',
   },
   {
+    key: 'assignee',
+    label: 'Assignee',
+    description: 'User the alert is assigned to',
+    defaultVisible: true,
+    category: 'metadata',
+  },
+  {
     key: 'external_id',
     label: 'External ID',
     description: 'SHA-256 fingerprint or provider ID',

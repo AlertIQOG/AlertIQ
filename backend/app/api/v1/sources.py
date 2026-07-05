@@ -6,6 +6,7 @@ Same conventions as ``alerts.py``:
   - Return ``SourceRead``, never the raw DB model.
 """
 
+import secrets
 import uuid
 
 from fastapi import APIRouter, Depends, status
@@ -21,8 +22,13 @@ router = APIRouter()
 
 @router.post("/", response_model=SourceRead, status_code=status.HTTP_201_CREATED)
 def create_source(*, session: DbSession, body: SourceCreate) -> SourceRead:
-    """Register a new alert-source provider."""
+    """Register a new alert-source provider.
+
+    A webhook secret is generated server-side; configure the provider to
+    send it as the ``X-Webhook-Token`` header on ingest requests.
+    """
     db_obj = Source.model_validate(body.model_dump())
+    db_obj.webhook_secret = secrets.token_urlsafe(32)
     created = source_service.create(session, obj_in=db_obj)
     return created
 

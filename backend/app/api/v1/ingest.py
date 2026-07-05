@@ -9,17 +9,14 @@ mutable state (severity, extra_fields, impact) from the provider rather than
 being skipped.
 """
 
-import uuid
 import logging
 
 from fastapi import APIRouter, status
 
-from app.api.v1.dependencies import DbSession
-from app.core.exceptions import NotFoundError
+from app.api.v1.dependencies import DbSession, ValidWebhookSourceId
 from app.providers.grafana import GrafanaWebhook, grafana_normalizer
 from app.providers.prometheus import PrometheusWebhook, prometheus_normalizer
 from app.services.alert import alert_service
-from app.services.source import source_service
 
 logger = logging.getLogger("alertiq.ingest")
 
@@ -35,21 +32,18 @@ router = APIRouter()
 def ingest_grafana(
     *,
     session: DbSession,
-    source_id: uuid.UUID,
+    source_id: ValidWebhookSourceId,
     payload: GrafanaWebhook,
 ) -> dict:
     """
     Receive a Grafana unified-alerting webhook and persist the alerts.
 
-    - Validates that the ``source_id`` exists.
+    - Authenticates the request via the source's ``X-Webhook-Token`` secret
+      (which also validates that the ``source_id`` exists).
     - Normalizes the Grafana payload into ``AlertCreate`` objects.
     - Upserts each alert: new alerts are inserted, existing ones are updated.
     - Returns ``202 Accepted`` with ``{created, updated}`` counts.
     """
-    source = source_service.get(session, id=source_id)
-    if source is None:
-        raise NotFoundError("Source", str(source_id))
-
     alert_creates = grafana_normalizer.normalize(source_id, payload)
 
     created = 0
@@ -87,19 +81,16 @@ def ingest_grafana(
 def ingest_prometheus(
     *,
     session: DbSession,
-    source_id: uuid.UUID,
+    source_id: ValidWebhookSourceId,
     payload: PrometheusWebhook,
 ) -> dict:
     """
     Receive a Prometheus Alertmanager webhook and persist the alerts.
 
+    Authenticates via the source's ``X-Webhook-Token`` secret.
     Upserts each alert: new alerts are inserted, existing ones are updated.
     Returns ``202 Accepted`` with ``{created, updated}`` counts.
     """
-    source = source_service.get(session, id=source_id)
-    if source is None:
-        raise NotFoundError("Source", str(source_id))
-
     alert_creates = prometheus_normalizer.normalize(source_id, payload)
 
     created = 0

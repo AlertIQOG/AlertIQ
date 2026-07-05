@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CorrelationCondition } from '../../types/correlation';
+import { apiFetch } from '../../services/apiClient';
 
 
 export default function CreateCorrelationRulePage() {
@@ -88,11 +89,8 @@ export default function CreateCorrelationRulePage() {
     group_by: ["service", "host"],
   };
 
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/correlation-rules`, {
+  const response = await apiFetch("/correlation-rules", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
     body: JSON.stringify(payload),
   });
 

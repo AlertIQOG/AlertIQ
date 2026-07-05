@@ -1,13 +1,9 @@
 import type { Incident } from '../types/incident';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+import { apiFetch } from './apiClient';
 
 export async function fetchIncidents(): Promise<Incident[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/incidents/`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    });
+    const response = await apiFetch('/incidents/');
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const data = await response.json();
     return data.map(normalizeIncident);
@@ -19,10 +15,7 @@ export async function fetchIncidents(): Promise<Incident[]> {
 
 export async function fetchIncident(id: string): Promise<Incident | null> {
   try {
-    const response = await fetch(`${API_BASE_URL}/incidents/${id}`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    });
+    const response = await apiFetch(`/incidents/${id}`);
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const data = await response.json();
     return normalizeIncident(data);
@@ -34,9 +27,8 @@ export async function fetchIncident(id: string): Promise<Incident | null> {
 
 export async function createIncident(body: Omit<Incident, 'id' | 'createdAt' | 'updatedAt'>): Promise<Incident | null> {
   try {
-    const response = await fetch(`${API_BASE_URL}/incidents/`, {
+    const response = await apiFetch('/incidents/', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(denormalizeIncident(body)),
     });
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -50,10 +42,7 @@ export async function createIncident(body: Omit<Incident, 'id' | 'createdAt' | '
 
 export async function deleteIncident(id: string): Promise<boolean> {
   try {
-    const response = await fetch(`${API_BASE_URL}/incidents/${id}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-    });
+    const response = await apiFetch(`/incidents/${id}`, { method: 'DELETE' });
     return response.ok || response.status === 204;
   } catch (error) {
     console.error('Error deleting incident:', error);
@@ -63,9 +52,8 @@ export async function deleteIncident(id: string): Promise<boolean> {
 
 export async function updateIncident(id: string, body: Partial<Incident>): Promise<Incident | null> {
   try {
-    const response = await fetch(`${API_BASE_URL}/incidents/${id}`, {
+    const response = await apiFetch(`/incidents/${id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(denormalizeIncident(body)),
     });
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
