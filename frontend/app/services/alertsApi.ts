@@ -44,6 +44,20 @@ export async function fetchAlerts(
   }
 }
 
+export async function fetchAlertChildren(alertId: string): Promise<Alert[]> {
+  try {
+    const response = await apiFetch(`/alerts/${alertId}/children`);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const data = await response.json();
+    return (data as unknown[]).map(normalizeAlert);
+  } catch (error) {
+    console.error('Error fetching aggregated alert children:', error);
+    return [];
+  }
+}
+
 export async function aggregateAlerts(alertIds: string[], title?: string): Promise<Alert | null> {
   try {
     const response = await apiFetch('/alerts/aggregate', {
