@@ -23,6 +23,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [mounted, setMounted] = useState(false);
 
+  // Re-read the stored session on every navigation. AppShell lives in the
+  // root layout, so it never remounts — without re-reading on `pathname`
+  // change, a same-tab login (which writes localStorage then navigates)
+  // would leave `token` stale at null and bounce the user back to /login.
+  // The `storage` event only covers *other* tabs, so it can't cover this.
   useEffect(() => {
     setToken(getToken());
     setUser(getStoredUser());
@@ -35,16 +40,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     };
     window.addEventListener('storage', sync);
     return () => window.removeEventListener('storage', sync);
-  }, []);
+  }, [pathname]);
 
   const isPublicPage = pathname === '/login' || pathname === '/signup';
 
+  // Read the token fresh from localStorage rather than the `token` state:
+  // right after a same-tab login the state update is still queued, so the
+  // state would be a stale null and bounce the just-authenticated user
+  // back to /login. getToken() reflects what login() already wrote.
   useEffect(() => {
     if (!mounted) return;
-    if (!isPublicPage && !token) {
+    if (!isPublicPage && !getToken()) {
       router.replace('/login');
     }
-  }, [mounted, isPublicPage, token, router]);
+  }, [mounted, isPublicPage, pathname, router]);
 
   if (isPublicPage) {
     return <>{children}</>;
