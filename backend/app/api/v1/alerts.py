@@ -58,6 +58,8 @@ def list_alerts(
         filters=filters.to_dict(),
         skip=pagination.skip,
         limit=pagination.limit,
+        order_by="created_at",
+        order_desc=True,
     )
 @router.post("/aggregate", response_model=AlertRead, status_code=status.HTTP_201_CREATED)
 def aggregate_alerts(*, session: DbSession, body: AggregateRequest) -> AlertRead:
