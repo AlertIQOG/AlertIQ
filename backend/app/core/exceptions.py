@@ -35,6 +35,17 @@ class ConflictError(AppException):
         super().__init__(detail)
 
 
+class NotificationError(AppException):
+    """Raised when an outbound notification channel fails to deliver.
+
+    Caught in-band by the notification dispatcher (reported as a per-channel
+    result), so it has no HTTP handler.
+    """
+
+    def __init__(self, detail: str = "Failed to send notification"):
+        super().__init__(detail)
+
+
 class AuthenticationError(AppException):
     """Raised when a request has missing or invalid credentials."""
 

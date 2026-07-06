@@ -9,6 +9,7 @@ from app.api.v1 import (
     incidents,
     ingest,
     notes,
+    notifications,
     sources,
 )
 from app.api.v1.dependencies import get_current_user
@@ -44,6 +45,14 @@ router.include_router(
     tags=["Correlation Rules"],
     dependencies=protected,
 )
+
+router.include_router(
+    notifications.router,
+    prefix="/notifications",
+    tags=["Notifications"],
+    dependencies=protected,
+)
+
 router.include_router(
     aggregated_alerts.router,
     prefix="/aggregated-alerts",
