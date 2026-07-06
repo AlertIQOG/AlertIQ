@@ -23,6 +23,9 @@ export default function Home() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isFetching, setIsFetching] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
+  // When drilling from an aggregated alert into one of its children, remember
+  // the parent so closing the child returns to the aggregation.
+  const [parentAlert, setParentAlert] = useState<Alert | null>(null);
   const [selectedAlertIds, setSelectedAlertIds] = useState<Set<string>>(new Set());
   const [showPromoteModal, setShowPromoteModal] = useState(false);
   const [isAggregating, setIsAggregating] = useState(false);
@@ -173,7 +176,7 @@ export default function Home() {
               )}
               <AlertsTable
                 alerts={alerts}
-                onRowClick={(alert) => setSelectedAlert(alert)}
+                onRowClick={(alert) => { setParentAlert(null); setSelectedAlert(alert); }}
                 visibleColumns={visibleColumns}
                 selectedIds={selectedAlertIds}
                 onToggleSelect={handleToggleSelect}
@@ -231,8 +234,18 @@ export default function Home() {
       {/* Alert Details Panel */}
       {selectedAlert && (
         <AlertDetailsPanel
+          key={selectedAlert.id}
           alert={selectedAlert}
-          onClose={() => setSelectedAlert(null)}
+          parentLabel={parentAlert?.message ?? null}
+          onClose={() => {
+            if (parentAlert) {
+              // Drilled into a child — go back to the aggregated parent.
+              setSelectedAlert(parentAlert);
+              setParentAlert(null);
+            } else {
+              setSelectedAlert(null);
+            }
+          }}
           onStatusChange={handleStatusChange}
           onAlertUpdate={(updated) => {
             setSelectedAlert(updated);
@@ -241,6 +254,10 @@ export default function Home() {
           onPromote={(alert) => {
             setSelectedAlertIds(new Set([alert.id]));
             setShowPromoteModal(true);
+          }}
+          onSelectAlert={(child) => {
+            setParentAlert(selectedAlert);
+            setSelectedAlert(child);
           }}
         />
       )}

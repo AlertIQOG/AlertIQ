@@ -77,10 +77,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between shrink-0 z-20">
         <div>
           <div className="h-16 flex items-center px-6 border-b border-slate-800 mb-6">
-            <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center mr-3 shadow-lg shadow-purple-500/20">
-              <i className="fas fa-bolt text-white text-xs"></i>
-            </div>
-            <span className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">AlertIQ</span>
+            <Link href="/" aria-label="Go to Alerts Feed" className="flex items-center transition-opacity hover:opacity-80">
+              <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center mr-3 shadow-lg shadow-purple-500/20">
+                <i className="fas fa-bolt text-white text-xs"></i>
+              </div>
+              <span className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">AlertIQ</span>
+            </Link>
           </div>
           <nav className="px-3 space-y-2">
             <Link href="/" className="nav-btn w-full flex items-center px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors text-left group">

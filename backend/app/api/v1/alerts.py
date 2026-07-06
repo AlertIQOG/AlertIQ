@@ -58,6 +58,8 @@ def list_alerts(
         filters=filters.to_dict(),
         skip=pagination.skip,
         limit=pagination.limit,
+        order_by="created_at",
+        order_desc=True,
     )
 @router.post("/aggregate", response_model=AlertRead, status_code=status.HTTP_201_CREATED)
 def aggregate_alerts(*, session: DbSession, body: AggregateRequest) -> AlertRead:
@@ -72,6 +74,30 @@ def get_alert(*, session: DbSession, alert_id: uuid.UUID) -> AlertRead:
     if not alert:
         raise NotFoundError("Alert", str(alert_id))
     return alert
+
+
+@router.get("/{alert_id}/children", response_model=list[AlertRead])
+def get_alert_children(*, session: DbSession, alert_id: uuid.UUID) -> list[AlertRead]:
+    """Return the child alerts grouped under an aggregated alert.
+
+    Aggregation stores the originals' IDs in ``extra_fields._child_ids`` and
+    dismisses them; this resolves those IDs back to the full alerts so the UI
+    can show what was grouped. Returns an empty list for non-aggregated alerts.
+    """
+    alert = alert_service.get(session, id=alert_id)
+    if not alert:
+        raise NotFoundError("Alert", str(alert_id))
+
+    child_ids = (alert.extra_fields or {}).get("_child_ids", [])
+    children: list[Alert] = []
+    for cid in child_ids:
+        try:
+            child = alert_service.get(session, id=uuid.UUID(str(cid)))
+        except (ValueError, TypeError):
+            continue
+        if child:
+            children.append(child)
+    return children
 
 
 @router.get("/{alert_id}/similar", response_model=SimilarResponse)

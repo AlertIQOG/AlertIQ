@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, AlertNote } from './../types/alert';
 import { CopilotSuggestion } from '../types/copilot';
-import { addAlertNote, updateAlertNote, deleteAlertNote, updateAlertAssignee, fetchCopilotSuggestion } from '../services/alertsApi';
+import { addAlertNote, updateAlertNote, deleteAlertNote, updateAlertAssignee, fetchCopilotSuggestion, fetchAlertChildren } from '../services/alertsApi';
 import { getStoredUser } from '../services/apiClient';
 
 interface AlertDetailsPanelProps {
@@ -12,9 +12,11 @@ interface AlertDetailsPanelProps {
   onStatusChange: (alertId: string, newStatus: string) => void;
   onAlertUpdate?: (updated: Alert) => void;
   onPromote?: (alert: Alert) => void;
+  onSelectAlert?: (alert: Alert) => void;
+  parentLabel?: string | null;
 }
 
-export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAlertUpdate, onPromote }: AlertDetailsPanelProps) {
+export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAlertUpdate, onPromote, onSelectAlert, parentLabel }: AlertDetailsPanelProps) {
   const [noteText, setNoteText] = useState('');
   const [notes, setNotes] = useState<AlertNote[]>(
     (alert.extra_fields?._notes as AlertNote[]) ?? []
@@ -24,6 +26,46 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
   const [editText, setEditText] = useState('');
   const [assignee, setAssignee] = useState<string | null>(alert.assignee ?? null);
   const [assigning, setAssigning] = useState(false);
+
+  // Child alerts grouped under this alert (only for aggregated alerts).
+  const [children, setChildren] = useState<Alert[]>([]);
+  const [childrenLoading, setChildrenLoading] = useState(false);
+
+  useEffect(() => {
+    if (!alert.isAggregated) {
+      setChildren([]);
+      return;
+    }
+    let cancelled = false;
+    setChildrenLoading(true);
+    fetchAlertChildren(alert.id).then((data) => {
+      if (!cancelled) {
+        setChildren(data);
+        setChildrenLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [alert.id, alert.isAggregated]);
+
+  const severityTextColor = (severity: string) => {
+    const s = severity.toLowerCase();
+    if (s === 'critical') return 'text-orange-400';
+    if (s === 'error') return 'text-red-400';
+    if (s === 'warning') return 'text-yellow-400';
+    return 'text-blue-400';
+  };
+
+  const relativeTime = (iso?: string) => {
+    if (!iso) return '';
+    const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+  };
 
   const currentUsername = getStoredUser()?.username ?? null;
 
@@ -140,6 +182,16 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
 
           {/* Title & Badges */}
           <div>
+            {parentLabel && (
+              <button
+                onClick={onClose}
+                className="flex items-center gap-2 text-xs text-slate-400 hover:text-white transition mb-3"
+                title={parentLabel}
+              >
+                <i className="fas fa-arrow-left text-[10px]"></i>
+                <span className="truncate max-w-[300px]">Back to aggregated alert</span>
+              </button>
+            )}
             <h3 className="text-xl font-bold text-white mb-3 leading-snug">{alert.message}</h3>
             <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
               <span className={`px-2.5 py-1 rounded border ${getSeverityBadge(alert.severity)}`}>
@@ -192,6 +244,44 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
               </div>
             </div>
           </div>
+
+          {/* Correlation Context — grouped alerts (aggregated alerts only) */}
+          {alert.isAggregated && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <i className="fas fa-layer-group text-indigo-500 text-xs"></i>
+                <span className="text-[10px] font-bold text-white uppercase tracking-wider">Correlation Context</span>
+              </div>
+              <div className="text-[10px] text-slate-500 uppercase font-bold mb-2">
+                Grouped Alerts ({alert.childCount ?? children.length})
+              </div>
+              {childrenLoading ? (
+                <div className="text-xs text-slate-500 flex items-center gap-2">
+                  <i className="fas fa-spinner fa-spin"></i> Loading grouped alerts…
+                </div>
+              ) : children.length === 0 ? (
+                <div className="text-xs text-slate-500">No grouped alerts found.</div>
+              ) : (
+                <div className="space-y-2">
+                  {children.map((child) => (
+                    <button
+                      key={child.id}
+                      onClick={() => onSelectAlert?.(child)}
+                      className="w-full text-left bg-slate-950 hover:bg-slate-900 p-2.5 rounded border border-slate-800 hover:border-slate-600 flex justify-between items-center gap-3 transition group"
+                    >
+                      <span className={`text-xs font-bold truncate ${severityTextColor(child.severity)}`}>
+                        {child.message}
+                      </span>
+                      <span className="text-[10px] text-slate-500 shrink-0 whitespace-nowrap flex items-center gap-2">
+                        {child.application || child.region || 'alert'} • {relativeTime(child.created_at)}
+                        <i className="fas fa-chevron-right text-slate-600 group-hover:text-slate-400"></i>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Notes */}
           <div>
