@@ -176,7 +176,7 @@ def test_ingest_with_correct_token_is_accepted(monkeypatch):
 
     response = _ingest(source, {"X-Webhook-Token": "expected-secret"})
     assert response.status_code == 202
-    assert response.json() == {"created": 0, "updated": 0}
+    assert response.json() == {"created": 0, "updated": 0, "aggregated": 0}
 
 
 def test_ingest_source_without_secret_is_401(monkeypatch):

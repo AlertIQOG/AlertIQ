@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.api.v1 import (
+    aggregated_alerts,
     alerts,
     auth,
     correlation_rule,
@@ -41,5 +42,11 @@ router.include_router(
     correlation_rule.router,
     prefix="/correlation-rules",
     tags=["Correlation Rules"],
+    dependencies=protected,
+)
+router.include_router(
+    aggregated_alerts.router,
+    prefix="/aggregated-alerts",
+    tags=["Aggregated Alerts"],
     dependencies=protected,
 )

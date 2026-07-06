@@ -1,3 +1,4 @@
+from app.models.aggregated_alert import AggregatedAlert
 from app.models.alert import Alert
 from app.models.correlation_rule import CorrelationRule
 from app.models.incident import Incident
@@ -7,4 +8,14 @@ from app.models.rag_chunk import RagChunk
 from app.models.copilot_suggestion import CopilotSuggestion
 from app.models.user import User
 
-__all__ = ["Source", "Alert", "Incident", "Note", "CorrelationRule", "User", "RagChunk", "CopilotSuggestion"]
+__all__ = [
+    "Source",
+    "Alert",
+    "Incident",
+    "Note",
+    "CorrelationRule",
+    "AggregatedAlert",
+    "User",
+    "RagChunk",
+    "CopilotSuggestion",
+]
