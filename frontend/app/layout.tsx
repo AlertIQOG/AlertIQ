@@ -1,5 +1,11 @@
+import type { Metadata } from 'next';
 import './globals.css';
 import AppShell from './components/AppShell';
+
+export const metadata: Metadata = {
+  title: 'AlertIQ',
+  description: 'AlertIQ — alert ingestion, correlation, and incident management',
+};
 
 export default function RootLayout({
   children,
