@@ -21,6 +21,17 @@ with engine.begin() as conn:
 import app.models  # noqa: F401, E402 — ensures all models are registered before create_all
 SQLModel.metadata.create_all(engine)
 
+# create_all only creates missing tables; it never ALTERs an existing one. Add
+# columns introduced after a table first shipped here, idempotently, so an
+# already-provisioned database picks them up on the next boot.
+with engine.begin() as conn:
+    conn.execute(
+        text(
+            "ALTER TABLE correlation_rules "
+            "ADD COLUMN IF NOT EXISTS actions jsonb NOT NULL DEFAULT '[\"aggregate\"]'::jsonb"
+        )
+    )
+
 
 def get_session() -> Generator[Session, None, None]:
     """Yield a database session."""

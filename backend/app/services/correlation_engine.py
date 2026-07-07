@@ -274,10 +274,14 @@ class CorrelationEngine:
     """
 
     def __init__(
-        self, rule_service: Any | None = None, aggregate_service: Any | None = None
+        self,
+        rule_service: Any | None = None,
+        aggregate_service: Any | None = None,
+        notifier: Any | None = None,
     ) -> None:
         self._rule_service = rule_service
         self._aggregate_service = aggregate_service
+        self._notifier = notifier
 
     @property
     def rule_service(self) -> Any:
@@ -295,6 +299,24 @@ class CorrelationEngine:
             self._aggregate_service = aggregated_alert_service
         return self._aggregate_service
 
+    @property
+    def notifier(self) -> Any:
+        if self._notifier is None:
+            from app.services.notifications import notify_correlation
+
+            self._notifier = notify_correlation
+        return self._notifier
+
+    def _dispatch_email(self, rule: CorrelationRule, alert: Alert) -> None:
+        """Send the rule's email notification, isolating failures so a broken
+        mailer never drops the alert or blocks aggregation."""
+        try:
+            self.notifier(rule, [alert], channels=["email"])
+        except Exception:  # noqa: BLE001 — notification must not break correlation
+            logger.exception(
+                "Email action failed — rule=%s alert=%s", rule.name, alert.id
+            )
+
     def process_alert(
         self,
         session: "Session",
@@ -307,6 +329,11 @@ class CorrelationEngine:
 
         Returns the :class:`AggregatedAlert` the alert landed in, or ``None``
         when no rule matched (the alert remains standalone).
+
+        Per-rule ``actions`` decide what happens on a match: ``"email"`` sends an
+        email notification, ``"aggregate"`` folds the alert into an aggregate. A
+        rule may have either or both; an email-only rule fires the email and
+        leaves the alert available for a later rule to aggregate.
 
         Edge cases handled:
           - **resolved/dismissed alerts** are never correlated;
@@ -323,6 +350,17 @@ class CorrelationEngine:
 
         for rule in self.rule_service.get_active(session):
             if not rule_matches(alert, rule):
+                continue
+
+            actions = rule.actions or ["aggregate"]
+
+            # Email is a side-effect fired on every match of an "email" rule.
+            if "email" in actions:
+                self._dispatch_email(rule, alert)
+
+            # An email-only rule does not consume the alert for aggregation;
+            # let a later rule aggregate it.
+            if "aggregate" not in actions:
                 continue
 
             grouping = compute_group(alert, rule.group_by)

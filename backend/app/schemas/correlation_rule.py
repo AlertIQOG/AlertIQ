@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 AllowedOperator = Literal[
@@ -15,6 +15,18 @@ AllowedOperator = Literal[
     "less_or_equal",
     "is_present",
 ]
+
+# Actions a rule can run when it matches. Exposed as a multiselect in the UI.
+CorrelationAction = Literal["aggregate", "email"]
+
+
+def _dedupe_actions(actions: list[str]) -> list[str]:
+    """Drop duplicates while preserving the order the user selected them in."""
+    seen: list[str] = []
+    for action in actions:
+        if action not in seen:
+            seen.append(action)
+    return seen
 
 
 class CorrelationCondition(BaseModel):
@@ -31,6 +43,12 @@ class CorrelationRuleBase(BaseModel):
     conditions: list[CorrelationCondition] = Field(min_length=1)
     time_window_minutes: int = Field(gt=0, le=1440)
     group_by: list[str] = Field(min_length=1)
+    actions: list[CorrelationAction] = Field(default_factory=lambda: ["aggregate"], min_length=1)
+
+    @field_validator("actions")
+    @classmethod
+    def dedupe_actions(cls, actions: list[str]) -> list[str]:
+        return _dedupe_actions(actions)
 
 
 class CorrelationRuleCreate(CorrelationRuleBase):
@@ -45,6 +63,9 @@ class CorrelationRuleCreate(CorrelationRuleBase):
         if not self.group_by:
             raise ValueError("Rule must contain at least one group_by field")
 
+        if not self.actions:
+            raise ValueError("Rule must contain at least one action")
+
         return self
 
 
@@ -56,6 +77,12 @@ class CorrelationRuleUpdate(BaseModel):
     conditions: list[CorrelationCondition] | None = None
     time_window_minutes: int | None = Field(default=None, gt=0, le=1440)
     group_by: list[str] | None = None
+    actions: list[CorrelationAction] | None = Field(default=None, min_length=1)
+
+    @field_validator("actions")
+    @classmethod
+    def dedupe_actions(cls, actions: list[str] | None) -> list[str] | None:
+        return _dedupe_actions(actions) if actions is not None else None
 
 
 class CorrelationRuleRead(BaseModel):
@@ -69,5 +96,6 @@ class CorrelationRuleRead(BaseModel):
     conditions: list[dict[str, Any]]
     time_window_minutes: int
     group_by: list[str]
+    actions: list[str] = Field(default_factory=lambda: ["aggregate"])
     created_at: datetime | None = None
     updated_at: datetime | None = None
