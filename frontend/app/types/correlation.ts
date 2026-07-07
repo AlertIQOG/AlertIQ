@@ -24,7 +24,10 @@ export interface CorrelationRule {
 
   // Actions to run when the rule matches (multiselect): "aggregate" and/or "email"
   actions?: CorrelationActionId[];
-  
+
+  // Recipients notified when the "email" action fires
+  email_recipients?: string[];
+
   // Helper fields for table display
   logicSummary: {
     source: string;

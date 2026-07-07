@@ -309,9 +309,16 @@ class CorrelationEngine:
 
     def _dispatch_email(self, rule: CorrelationRule, alert: Alert) -> None:
         """Send the rule's email notification, isolating failures so a broken
-        mailer never drops the alert or blocks aggregation."""
+        mailer never drops the alert or blocks aggregation.
+
+        The rule's ``email_recipients`` become the message's ``To`` (comma
+        separated). When empty, ``to`` is ``None`` and the email channel falls
+        back to the global ``EMAIL_DEFAULT_TO``.
+        """
+        recipients = getattr(rule, "email_recipients", None) or []
+        to = ",".join(recipients) if recipients else None
         try:
-            self.notifier(rule, [alert], channels=["email"])
+            self.notifier(rule, [alert], channels=["email"], to=to)
         except Exception:  # noqa: BLE001 — notification must not break correlation
             logger.exception(
                 "Email action failed — rule=%s alert=%s", rule.name, alert.id

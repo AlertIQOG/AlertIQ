@@ -11,7 +11,13 @@ import {
   toggleAction,
   type CorrelationActionId,
 } from "../actions";
-import { ANY_REGION, buildScope, parseGroupBy } from "../rulePayload";
+import {
+  ANY_REGION,
+  buildScope,
+  parseGroupBy,
+  parseRecipients,
+  validateEmailRecipients,
+} from "../rulePayload";
 
 const DEFAULT_REGIONS = [ANY_REGION];
 const sourceOptions = ["Prometheus", "Grafana"];
@@ -45,6 +51,12 @@ export default function CreateCorrelationRulePage() {
   // Actions (multiselect): aggregate alerts and/or send email
   const [selectedActions, setSelectedActions] =
     useState<CorrelationActionId[]>(DEFAULT_ACTIONS);
+
+  // Recipients for the "email" action (comma-separated); required when it's on.
+  const [emailRecipients, setEmailRecipients] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const emailSelected = selectedActions.includes("email");
 
   const handleToggleAction = (id: CorrelationActionId) => {
     setSelectedActions((prev) => toggleAction(prev, id));
@@ -156,6 +168,16 @@ useEffect(() => {
   const handleSaveRule = async () => {
     const finalTimeWindow = getTimeWindowInMinutes();
 
+    const recipients = parseRecipients(emailRecipients);
+
+    // Block save when the email action is on but recipients are missing/invalid.
+    const recipientsCheck = validateEmailRecipients(selectedActions, recipients);
+    if (!recipientsCheck.ok) {
+      setFormError(recipientsCheck.error ?? "Invalid email recipients.");
+      return;
+    }
+    setFormError(null);
+
     const payload = {
       name: ruleName,
       description: "",
@@ -170,6 +192,8 @@ useEffect(() => {
       time_window_minutes: finalTimeWindow,
       group_by: parseGroupBy(groupBy),
       actions: selectedActions,
+      // Only meaningful when the email action is selected; harmless otherwise.
+      email_recipients: emailSelected ? recipients : [],
     };
 
     const response = await apiFetch("/correlation-rules/", {
@@ -473,8 +497,31 @@ useEffect(() => {
                   );
                 })}
               </div>
+
+              {/* Recipients — only relevant when the email action is on */}
+              {emailSelected && (
+                <div className="flex flex-col gap-1.5 mt-1 animate-fadeIn">
+                  <label className="text-xs font-semibold text-slate-400">
+                    Email recipients
+                  </label>
+                  <input
+                    type="text"
+                    value={emailRecipients}
+                    onChange={(e) => setEmailRecipients(e.target.value)}
+                    placeholder="ops@acme.com, oncall@acme.com"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:border-indigo-500 outline-none transition-colors placeholder:text-slate-600"
+                  />
+                  <p className="text-xs text-slate-500">
+                    Comma-separated addresses. Required while “Send Email” is selected.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
+
+          {formError && (
+            <p className="text-xs font-medium text-red-400">{formError}</p>
+          )}
         </div>
       </div>
 

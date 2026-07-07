@@ -35,6 +35,10 @@ class CorrelationRule(SQLModel, table=True):
         default_factory=lambda: ["aggregate"], sa_column=Column(JSONB)
     )
 
+    # Email addresses notified when the "email" action fires. Empty means fall
+    # back to the global EMAIL_DEFAULT_TO.
+    email_recipients: list[str] = Field(default_factory=list, sa_column=Column(JSONB))
+
     created_at: datetime | None = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False),

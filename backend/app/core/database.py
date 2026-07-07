@@ -31,6 +31,12 @@ with engine.begin() as conn:
             "ADD COLUMN IF NOT EXISTS actions jsonb NOT NULL DEFAULT '[\"aggregate\"]'::jsonb"
         )
     )
+    conn.execute(
+        text(
+            "ALTER TABLE correlation_rules "
+            "ADD COLUMN IF NOT EXISTS email_recipients jsonb NOT NULL DEFAULT '[]'::jsonb"
+        )
+    )
 
 
 def get_session() -> Generator[Session, None, None]:

@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import datetime
 from typing import Any, Literal
@@ -29,6 +30,25 @@ def _dedupe_actions(actions: list[str]) -> list[str]:
     return seen
 
 
+# Pragmatic email check — avoids adding the email-validator dependency while
+# still rejecting obvious mistakes.
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _clean_recipients(recipients: list[str]) -> list[str]:
+    """Trim, drop blanks, de-duplicate, and validate each recipient's format."""
+    cleaned: list[str] = []
+    for raw in recipients:
+        email = raw.strip()
+        if not email:
+            continue
+        if not _EMAIL_RE.match(email):
+            raise ValueError(f"Invalid email address: {raw!r}")
+        if email not in cleaned:
+            cleaned.append(email)
+    return cleaned
+
+
 class CorrelationCondition(BaseModel):
     field: str
     operator: AllowedOperator
@@ -44,11 +64,17 @@ class CorrelationRuleBase(BaseModel):
     time_window_minutes: int = Field(gt=0, le=1440)
     group_by: list[str] = Field(min_length=1)
     actions: list[CorrelationAction] = Field(default_factory=lambda: ["aggregate"], min_length=1)
+    email_recipients: list[str] = Field(default_factory=list)
 
     @field_validator("actions")
     @classmethod
     def dedupe_actions(cls, actions: list[str]) -> list[str]:
         return _dedupe_actions(actions)
+
+    @field_validator("email_recipients")
+    @classmethod
+    def clean_recipients(cls, recipients: list[str]) -> list[str]:
+        return _clean_recipients(recipients)
 
 
 class CorrelationRuleCreate(CorrelationRuleBase):
@@ -66,6 +92,11 @@ class CorrelationRuleCreate(CorrelationRuleBase):
         if not self.actions:
             raise ValueError("Rule must contain at least one action")
 
+        if "email" in self.actions and not self.email_recipients:
+            raise ValueError(
+                "The email action requires at least one recipient in email_recipients"
+            )
+
         return self
 
 
@@ -78,11 +109,17 @@ class CorrelationRuleUpdate(BaseModel):
     time_window_minutes: int | None = Field(default=None, gt=0, le=1440)
     group_by: list[str] | None = None
     actions: list[CorrelationAction] | None = Field(default=None, min_length=1)
+    email_recipients: list[str] | None = None
 
     @field_validator("actions")
     @classmethod
     def dedupe_actions(cls, actions: list[str] | None) -> list[str] | None:
         return _dedupe_actions(actions) if actions is not None else None
+
+    @field_validator("email_recipients")
+    @classmethod
+    def clean_recipients(cls, recipients: list[str] | None) -> list[str] | None:
+        return _clean_recipients(recipients) if recipients is not None else None
 
 
 class CorrelationRuleRead(BaseModel):
@@ -97,5 +134,6 @@ class CorrelationRuleRead(BaseModel):
     time_window_minutes: int
     group_by: list[str]
     actions: list[str] = Field(default_factory=lambda: ["aggregate"])
+    email_recipients: list[str] = Field(default_factory=list)
     created_at: datetime | None = None
     updated_at: datetime | None = None
