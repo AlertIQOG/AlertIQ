@@ -32,7 +32,7 @@ export default function CreateCorrelationRulePage() {
 useEffect(() => {
   const fetchEnvironmentOptions = async () => {
     try {
-      const response = await apiFetch("/alerts");
+      const response = await apiFetch("/alerts/");
 
       if (!response.ok) {
         throw new Error("Failed to fetch alerts");
@@ -161,7 +161,7 @@ useEffect(() => {
       group_by: ["service", "host"],
     };
 
-    const response = await apiFetch("/correlation-rules", {
+    const response = await apiFetch("/correlation-rules/", {
       method: "POST",
       body: JSON.stringify(payload),
     });
