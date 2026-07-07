@@ -13,9 +13,11 @@ interface AlertDetailsPanelProps {
   onStatusChange: (alertId: string, newStatus: string) => void;
   onAlertUpdate?: (updated: Alert) => void;
   onPromote?: (alert: Alert) => void;
+  parentLabel?: string | null; // Optional label for the parent alert, if this is a child alert
+  onSelectAlert?: (alert: Alert) => void;
 }
 
-export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAlertUpdate, onPromote }: AlertDetailsPanelProps) {
+export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAlertUpdate, onPromote, parentLabel }: AlertDetailsPanelProps) {
   const [noteText, setNoteText] = useState('');
   const [notes, setNotes] = useState<AlertNote[]>(
     (alert.extra_fields?._notes as AlertNote[]) ?? []
