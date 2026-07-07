@@ -6,7 +6,7 @@ from sqlmodel import Session
 
 from app.models.alert import Alert, AlertStatus
 from app.models.note import Note
-from app.schemas.note import NoteCreate
+from app.schemas.note import NoteCreate, NoteUpdate
 from app.services.base import CRUDBase
 from app.services.rag.indexer import safe_index_alert
 
@@ -49,11 +49,62 @@ class NoteService(CRUDBase[Note]):
             content=obj_in.content,
         )
         note = self.create(session, obj_in=db_obj)
+        self._reindex_if_solved(session, alert_id)
+        return note
 
+    def update_for_alert(
+        self,
+        session: Session,
+        *,
+        alert_id: uuid.UUID,
+        note_id: uuid.UUID,
+        obj_in: NoteUpdate,
+    ) -> Note | None:
+        """Edit a note's content, re-indexing the parent alert if Solved.
+
+        Returns ``None`` if the note does not exist or belongs to a different
+        alert (guards against editing another alert's note via a spoofed URL).
+        """
+        note = self.get(session, id=note_id)
+        if note is None or note.alert_id != alert_id:
+            return None
+
+        updated = self.update(
+            session, db_obj=note, update_data={"content": obj_in.content}
+        )
+        self._reindex_if_solved(session, alert_id)
+        return updated
+
+    def delete_for_alert(
+        self,
+        session: Session,
+        *,
+        alert_id: uuid.UUID,
+        note_id: uuid.UUID,
+    ) -> Note | None:
+        """Delete a note, re-indexing the parent alert if Solved.
+
+        Returns ``None`` if the note does not exist or belongs to a different
+        alert.
+        """
+        note = self.get(session, id=note_id)
+        if note is None or note.alert_id != alert_id:
+            return None
+
+        removed = self.remove(session, id=note_id)
+        self._reindex_if_solved(session, alert_id)
+        return removed
+
+    def _reindex_if_solved(self, session: Session, alert_id: uuid.UUID) -> None:
+        """Re-embed the parent alert (best-effort) when it is already Solved.
+
+        A Solved alert's RAG chunk bundles its resolution notes, so any note
+        mutation must refresh that chunk. Non-Solved alerts are not embedded
+        yet, so there is nothing to update.
+        """
         alert = session.get(Alert, alert_id)
         if alert is not None and alert.status == AlertStatus.SOLVED:
             safe_index_alert(session, alert)
-        return note
 
 
 note_service = NoteService(Note)

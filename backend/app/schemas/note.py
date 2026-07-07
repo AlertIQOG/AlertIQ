@@ -25,6 +25,18 @@ class NoteCreate(BaseModel):
     )
 
 
+class NoteUpdate(BaseModel):
+    """Schema for editing an existing note (content only)."""
+
+    content: str = Field(
+        ...,
+        min_length=1,
+        max_length=5000,
+        description="Updated note content",
+        examples=["Root cause was a stuck migration — killed the PID and it drained."],
+    )
+
+
 class NoteRead(BaseModel):
     """Schema for reading a note."""
 

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Alert, AlertNote } from './../types/alert';
 import { CopilotSuggestion } from '../types/copilot';
-import { addAlertNote, updateAlertNote, deleteAlertNote, updateAlertAssignee, fetchCopilotSuggestion, fetchAlertChildren } from '../services/alertsApi';
+import { fetchAlertNotes, addAlertNote, updateAlertNote, deleteAlertNote, updateAlertAssignee, fetchCopilotSuggestion, fetchAlertChildren } from '../services/alertsApi';
 import { getStoredUser } from '../services/apiClient';
 import { fetchAllUsers } from '../services/usersApi';
 
@@ -19,11 +19,9 @@ interface AlertDetailsPanelProps {
 
 export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAlertUpdate, onPromote, onSelectAlert, parentLabel }: AlertDetailsPanelProps) {
   const [noteText, setNoteText] = useState('');
-  const [notes, setNotes] = useState<AlertNote[]>(
-    (alert.extra_fields?._notes as AlertNote[]) ?? []
-  );
+  const [notes, setNotes] = useState<AlertNote[]>([]);
   const [saving, setSaving] = useState(false);
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [assignee, setAssignee] = useState<string | null>(alert.assignee ?? null);
   const [assigning, setAssigning] = useState(false);
@@ -66,7 +64,21 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
     };
   }, [alert.id, alert.isAggregated]);
 
-  // 2. Get the list of system users when the component mounts
+  // 2. Load this alert's notes from the backend (source of truth is the
+  //    `notes` table, not extra_fields — see alertsApi note functions).
+  useEffect(() => {
+    let cancelled = false;
+    const loadNotes = async () => {
+      const data = await fetchAlertNotes(alert.id);
+      if (!cancelled) setNotes(data);
+    };
+    loadNotes();
+    return () => {
+      cancelled = true;
+    };
+  }, [alert.id]);
+
+  // 3. Get the list of system users when the component mounts
   useEffect(() => {
     const loadUsers = async () => {
       try {
@@ -155,40 +167,33 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
     }
   };
 
-  const syncUpdate = (updated: Alert) => {
-    const updatedNotes = (updated.extra_fields?._notes as AlertNote[]) ?? [];
-    setNotes(updatedNotes);
-    onAlertUpdate?.(updated);
-  };
-
   const handleSaveNote = async () => {
     const trimmed = noteText.trim();
     if (!trimmed) return;
     setSaving(true);
-    const updated = await addAlertNote(alert, trimmed);
-    if (updated) syncUpdate(updated);
+    const author = currentUsername ?? 'unknown';
+    const created = await addAlertNote(alert.id, author, trimmed);
+    if (created) setNotes((prev) => [...prev, created]);
     setNoteText('');
     setSaving(false);
   };
 
-  const handleStartEdit = (reversedIndex: number, content: string) => {
-    setEditingIndex(reversedIndex);
+  const handleStartEdit = (id: string, content: string) => {
+    setEditingId(id);
     setEditText(content);
   };
 
-  const handleSaveEdit = async (reversedIndex: number) => {
+  const handleSaveEdit = async (id: string) => {
     const trimmed = editText.trim();
     if (!trimmed) return;
-    const realIndex = notes.length - 1 - reversedIndex;
-    const updated = await updateAlertNote(alert, realIndex, trimmed);
-    if (updated) syncUpdate(updated);
-    setEditingIndex(null);
+    const updated = await updateAlertNote(alert.id, id, trimmed);
+    if (updated) setNotes((prev) => prev.map((n) => (n.id === id ? updated : n)));
+    setEditingId(null);
   };
 
-  const handleDelete = async (reversedIndex: number) => {
-    const realIndex = notes.length - 1 - reversedIndex;
-    const updated = await deleteAlertNote(alert, realIndex);
-    if (updated) syncUpdate(updated);
+  const handleDelete = async (id: string) => {
+    const ok = await deleteAlertNote(alert.id, id);
+    if (ok) setNotes((prev) => prev.filter((n) => n.id !== id));
   };
 
   const reversedNotes = [...notes].reverse();
@@ -348,9 +353,9 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
             {/* Notes history */}
             {reversedNotes.length > 0 && (
               <div className="mt-3 space-y-2">
-                {reversedNotes.map((note, i) => (
-                  <div key={i} className="bg-slate-900/60 border border-slate-800 rounded-lg px-3 py-2 group">
-                    {editingIndex === i ? (
+                {reversedNotes.map((note) => (
+                  <div key={note.id} className="bg-slate-900/60 border border-slate-800 rounded-lg px-3 py-2 group">
+                    {editingId === note.id ? (
                       <div>
                         <textarea
                           value={editText}
@@ -361,14 +366,14 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
                         />
                         <div className="flex gap-2">
                           <button
-                            onClick={() => handleSaveEdit(i)}
+                            onClick={() => handleSaveEdit(note.id)}
                             disabled={!editText.trim()}
                             className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs py-1.5 rounded font-medium transition"
                           >
                             Save
                           </button>
                           <button
-                            onClick={() => setEditingIndex(null)}
+                            onClick={() => setEditingId(null)}
                             className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-1.5 rounded font-medium transition"
                           >
                             Cancel
@@ -381,14 +386,14 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
                           <p className="text-sm text-slate-300 whitespace-pre-wrap flex-1">{note.content}</p>
                           <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition shrink-0 mt-0.5">
                             <button
-                              onClick={() => handleStartEdit(i, note.content)}
+                              onClick={() => handleStartEdit(note.id, note.content)}
                               className="text-slate-500 hover:text-slate-300 transition"
                               title="Edit"
                             >
                               <i className="fas fa-pencil text-[11px]"></i>
                             </button>
                             <button
-                              onClick={() => handleDelete(i)}
+                              onClick={() => handleDelete(note.id)}
                               className="text-slate-500 hover:text-red-400 transition"
                               title="Delete"
                             >

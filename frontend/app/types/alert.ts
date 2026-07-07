@@ -2,6 +2,9 @@ export type AlertSeverity = 'Info' | 'Warning' | 'Error' | 'Critical';
 export type AlertStatus = 'Open' | 'In progress' | 'Solved' | 'Dismissed';
 
 export interface AlertNote {
+  id: string;
+  alert_id: string;
+  author: string;
   content: string;
   created_at: string;
 }
