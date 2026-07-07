@@ -70,6 +70,10 @@ class PrometheusNormalizer:
             message = labels.get("alertname", "Unnamed Prometheus Alertmanager Alert")
 
             extra_fields: dict[str, Any] = {
+                # Provider name — lets correlation rules scope by ``source``
+                # (matches the value the rule form sends). Not otherwise a
+                # resolvable alert field.
+                "source": "Prometheus",
                 "fingerprint": alert.fingerprint,
                 "labels": labels,
                 "annotations": annotations,

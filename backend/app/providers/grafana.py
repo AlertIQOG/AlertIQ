@@ -127,6 +127,10 @@ class GrafanaNormalizer:
 
             # Preserve the full Grafana alert for reference / debugging
             extra_fields: dict[str, Any] = {
+                # Provider name — lets correlation rules scope by ``source``
+                # (matches the value the rule form sends). Not otherwise a
+                # resolvable alert field.
+                "source": "Grafana",
                 "fingerprint": alert.fingerprint,
                 "labels": labels,
                 "annotations": annotations,

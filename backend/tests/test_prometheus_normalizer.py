@@ -56,6 +56,19 @@ def test_maps_firing_alert(normalizer, source_id):
     assert alert.extra_fields["fingerprint"] == "abc123"
 
 
+def test_stamps_source_provider_name(normalizer, source_id):
+    """The provider name is stamped into extra_fields so correlation rules can
+    scope by ``source`` (it is not otherwise a resolvable alert field)."""
+    from app.services.correlation_engine import resolve_field
+
+    webhook = PrometheusWebhook(
+        alerts=[{"status": "firing", "labels": {"alertname": "X"}, "fingerprint": "f1"}]
+    )
+    alert = normalizer.normalize(source_id, webhook)[0]
+    assert alert.extra_fields["source"] == "Prometheus"
+    assert resolve_field(alert, "source") == "Prometheus"
+
+
 def test_maps_resolved_to_solved(normalizer, source_id):
     webhook = PrometheusWebhook(
         alerts=[
