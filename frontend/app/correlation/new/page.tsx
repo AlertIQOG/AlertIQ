@@ -11,8 +11,9 @@ import {
   toggleAction,
   type CorrelationActionId,
 } from "../actions";
+import { ANY_REGION, buildScope, parseGroupBy } from "../rulePayload";
 
-const DEFAULT_ENVIRONMENTS = ["PROD", "STG"];
+const DEFAULT_REGIONS = [ANY_REGION];
 const sourceOptions = ["Prometheus", "Grafana"];
 
 export default function CreateCorrelationRulePage() {
@@ -23,17 +24,23 @@ export default function CreateCorrelationRulePage() {
   const [timeWindow, setTimeWindow] = useState("5 Minutes");
 
   const [selectedSource, setSelectedSource] = useState("Prometheus");
-  const [selectedEnvironment, setSelectedEnvironment] = useState("PROD");
-  const [environmentOptions, setEnvironmentOptions] = useState<string[]>(DEFAULT_ENVIRONMENTS);
+  // Region scope. Defaults to "Any" (match every region) so a first rule is not
+  // silently unmatchable; the fetched list adds the regions seen on real alerts.
+  const [selectedRegion, setSelectedRegion] = useState(ANY_REGION);
+  const [regionOptions, setRegionOptions] = useState<string[]>(DEFAULT_REGIONS);
 
   // Custom time window
   const [customTimeValue, setCustomTimeValue] = useState("");
   const [customTimeUnit, setCustomTimeUnit] = useState("Minutes");
 
-  // Dynamic conditions
+  // Dynamic conditions. Numeric value (no "%") so numeric operators match.
   const [conditions, setConditions] = useState<CorrelationCondition[]>([
-    { id: "1", metric: "cpu_usage", operator: "Greater than", value: "90%" },
+    { id: "1", metric: "cpu_usage", operator: "Greater than", value: "90" },
   ]);
+
+  // Fields to group matching alerts by (comma-separated). Must be present on the
+  // alert or the rule skips it — "region" is a normalized field, a safe default.
+  const [groupBy, setGroupBy] = useState("region");
 
   // Actions (multiselect): aggregate alerts and/or send email
   const [selectedActions, setSelectedActions] =
@@ -44,7 +51,7 @@ export default function CreateCorrelationRulePage() {
   };
 
 useEffect(() => {
-  const fetchEnvironmentOptions = async () => {
+  const fetchRegionOptions = async () => {
     try {
       const response = await apiFetch("/alerts/");
 
@@ -55,7 +62,7 @@ useEffect(() => {
       const data = await response.json();
       const alerts = Array.isArray(data) ? data : data.items || data.alerts || [];
 
-      const environments = Array.from(
+      const regions = Array.from(
         new Set(
           alerts
             .map((alert: any) => alert.region || alert.environment || alert.env)
@@ -63,20 +70,15 @@ useEffect(() => {
         )
       ) as string[];
 
-      if (environments.length > 0) {
-        setEnvironmentOptions(environments);
-
-        if (!environments.includes(selectedEnvironment)) {
-          setSelectedEnvironment(environments[0]);
-        }
-      }
+      // Always keep "Any" available as the broad, always-matchable choice.
+      setRegionOptions([ANY_REGION, ...regions]);
     } catch (error) {
-      console.error("Error fetching environment options:", error);
-      setEnvironmentOptions(DEFAULT_ENVIRONMENTS);
+      console.error("Error fetching region options:", error);
+      setRegionOptions(DEFAULT_REGIONS);
     }
   };
 
-  fetchEnvironmentOptions();
+  fetchRegionOptions();
 }, []);
 
   const handleAddCondition = () => {
@@ -158,21 +160,15 @@ useEffect(() => {
       name: ruleName,
       description: "",
       enabled: true,
-      scope: {
-        source: selectedSource,
-        environment: selectedEnvironment,
-
-        // Kept for compatibility with engines that support array-based scope.
-        sources: [selectedSource],
-        environments: [selectedEnvironment],
-      },
+      // Only resolvable, non-array keys so the engine can actually match.
+      scope: buildScope({ source: selectedSource, region: selectedRegion }),
       conditions: conditions.map((condition) => ({
         field: condition.metric,
         operator: mapOperator(condition.operator),
         value: condition.value,
       })),
       time_window_minutes: finalTimeWindow,
-      group_by: ["service", "host"],
+      group_by: parseGroupBy(groupBy),
       actions: selectedActions,
     };
 
@@ -261,19 +257,19 @@ useEffect(() => {
               </span>
 
               <span className="text-xs font-semibold text-slate-300">
-                Environment
+                Region
               </span>
 
               <span className="text-slate-500 text-sm">=</span>
 
               <select
-                value={selectedEnvironment}
-                onChange={(e) => setSelectedEnvironment(e.target.value)}
+                value={selectedRegion}
+                onChange={(e) => setSelectedRegion(e.target.value)}
                 className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-3 py-2 text-xs outline-none focus:border-indigo-500 cursor-pointer min-w-32"
               >
-                {environmentOptions.map((environment) => (
-                  <option key={environment} value={environment}>
-                    {environment}
+                {regionOptions.map((region) => (
+                  <option key={region} value={region}>
+                    {region}
                   </option>
                 ))}
               </select>
@@ -369,6 +365,25 @@ useEffect(() => {
                 <i className="fas fa-plus"></i> Add Condition
               </button>
             </div>
+          </div>
+
+          {/* Group By Section */}
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-semibold text-slate-400 uppercase">
+              Group Alerts By
+            </label>
+            <input
+              type="text"
+              value={groupBy}
+              onChange={(e) => setGroupBy(e.target.value)}
+              placeholder="e.g. region, application"
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:border-indigo-500 outline-none transition-colors placeholder:text-slate-600"
+            />
+            <p className="text-xs text-slate-500">
+              Comma-separated alert fields (e.g. <span className="text-slate-400">region</span>,{" "}
+              <span className="text-slate-400">application</span>). Alerts sharing these
+              values are grouped together; an alert missing any of them is skipped.
+            </p>
           </div>
 
           {/* Footer Settings: Time Window & Action */}

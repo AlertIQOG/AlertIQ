@@ -144,6 +144,12 @@ class TestSingleAlert:
         alert = normalizer.normalize(source_id, webhook)[0]
         assert "alertname" in alert.extra_fields["labels"]
 
+    def test_stamps_source_provider_name(self, normalizer, source_id, single_firing_payload):
+        """Provider name is stamped so correlation rules can scope by ``source``."""
+        webhook = GrafanaWebhook(**single_firing_payload)
+        alert = normalizer.normalize(source_id, webhook)[0]
+        assert alert.extra_fields["source"] == "Grafana"
+
     def test_extra_fields_contains_annotations(self, normalizer, source_id, single_firing_payload):
         webhook = GrafanaWebhook(**single_firing_payload)
         alert = normalizer.normalize(source_id, webhook)[0]
