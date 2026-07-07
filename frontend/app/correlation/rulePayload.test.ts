@@ -5,6 +5,8 @@ import {
   DEFAULT_GROUP_BY,
   buildScope,
   parseGroupBy,
+  parseRecipients,
+  validateEmailRecipients,
 } from "./rulePayload";
 
 describe("buildScope", () => {
@@ -51,5 +53,39 @@ describe("parseGroupBy", () => {
 
   it("always returns at least one field (API requires min_length 1)", () => {
     expect(parseGroupBy("").length).toBeGreaterThan(0);
+  });
+});
+
+describe("parseRecipients", () => {
+  it("splits, trims and de-duplicates comma-separated emails", () => {
+    expect(parseRecipients(" a@x.com , b@y.com ,a@x.com")).toEqual([
+      "a@x.com",
+      "b@y.com",
+    ]);
+  });
+
+  it("returns an empty array for blank input", () => {
+    expect(parseRecipients("")).toEqual([]);
+    expect(parseRecipients("  ,  ")).toEqual([]);
+  });
+});
+
+describe("validateEmailRecipients", () => {
+  it("passes when the email action is not selected (recipients ignored)", () => {
+    expect(validateEmailRecipients(["aggregate"], []).ok).toBe(true);
+  });
+
+  it("fails when email is selected but there are no recipients", () => {
+    const result = validateEmailRecipients(["aggregate", "email"], []);
+    expect(result.ok).toBe(false);
+    expect(result.error).toBeTruthy();
+  });
+
+  it("fails when any recipient is not a valid email", () => {
+    expect(validateEmailRecipients(["email"], ["a@x.com", "nope"]).ok).toBe(false);
+  });
+
+  it("passes when email is selected with valid recipients", () => {
+    expect(validateEmailRecipients(["email"], ["a@x.com", "b@y.com"]).ok).toBe(true);
   });
 });

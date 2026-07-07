@@ -76,6 +76,7 @@ def make_rule(
     group_by: list[str] | None = None,
     time_window_minutes: int = 5,
     actions: list[str] | None = None,
+    email_recipients: list[str] | None = None,
 ) -> CorrelationRule:
     return CorrelationRule(
         name=name,
@@ -84,6 +85,7 @@ def make_rule(
         group_by=group_by or ["service"],
         time_window_minutes=time_window_minutes,
         actions=actions if actions is not None else ["aggregate"],
+        email_recipients=email_recipients or [],
     )
 
 
@@ -343,7 +345,9 @@ class FakeNotifier:
         self.calls: list[dict] = []
 
     def __call__(self, rule, alerts, *, channels=None, to=None):
-        self.calls.append({"rule": rule, "alerts": alerts, "channels": channels})
+        self.calls.append(
+            {"rule": rule, "alerts": alerts, "channels": channels, "to": to}
+        )
         return []
 
 
@@ -482,7 +486,11 @@ def test_aggregate_action_does_not_send_email(aggregates, notifier):
 
 
 def test_email_action_dispatches_email_notification(aggregates, notifier):
-    rule = make_rule(group_by=["service"], actions=["aggregate", "email"])
+    rule = make_rule(
+        group_by=["service"],
+        actions=["aggregate", "email"],
+        email_recipients=["ops@acme.com", "oncall@acme.com"],
+    )
     engine = build_engine([rule], aggregates, notifier)
 
     alert = make_alert(labels={"service": "payments"})
@@ -494,6 +502,18 @@ def test_email_action_dispatches_email_notification(aggregates, notifier):
     assert call["rule"] is rule
     assert call["alerts"] == [alert]
     assert call["channels"] == ["email"]
+    # The rule's recipients are passed through as a comma-separated To.
+    assert call["to"] == "ops@acme.com,oncall@acme.com"
+
+
+def test_email_dispatch_falls_back_to_global_when_no_recipients(aggregates, notifier):
+    """No per-rule recipients → to=None, so the channel uses EMAIL_DEFAULT_TO."""
+    rule = make_rule(group_by=["service"], actions=["aggregate", "email"])
+    engine = build_engine([rule], aggregates, notifier)
+
+    engine.process_alert(None, make_alert(labels={"service": "payments"}), now=NOW)
+
+    assert notifier.calls[0]["to"] is None
 
 
 def test_email_only_action_sends_email_without_aggregating(aggregates, notifier):

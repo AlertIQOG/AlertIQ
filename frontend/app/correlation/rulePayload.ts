@@ -53,3 +53,49 @@ export function parseGroupBy(input: string): string[] {
   const deduped = Array.from(new Set(fields));
   return deduped.length > 0 ? deduped : [...DEFAULT_GROUP_BY];
 }
+
+// Pragmatic client-side email check; the backend re-validates authoritatively.
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+export function isValidEmail(value: string): boolean {
+  return EMAIL_RE.test(value.trim());
+}
+
+/**
+ * Parse a comma-separated email input into a clean, de-duplicated list.
+ * Blank entries are dropped; invalid addresses are kept so the caller can
+ * validate and surface a specific error (see validateEmailRecipients).
+ */
+export function parseRecipients(input: string): string[] {
+  const emails = input
+    .split(",")
+    .map((email) => email.trim())
+    .filter((email) => email.length > 0);
+  return Array.from(new Set(emails));
+}
+
+export interface RecipientsValidation {
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * When the "email" action is selected, require at least one recipient and
+ * every recipient to be a valid address. Otherwise recipients are ignored.
+ */
+export function validateEmailRecipients(
+  actions: string[],
+  recipients: string[],
+): RecipientsValidation {
+  if (!actions.includes("email")) {
+    return { ok: true };
+  }
+  if (recipients.length === 0) {
+    return { ok: false, error: "Add at least one email recipient." };
+  }
+  const invalid = recipients.filter((email) => !isValidEmail(email));
+  if (invalid.length > 0) {
+    return { ok: false, error: `Invalid email: ${invalid.join(", ")}` };
+  }
+  return { ok: true };
+}
