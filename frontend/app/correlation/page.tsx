@@ -13,7 +13,7 @@ export default function CorrelationRulesPage() {
   useEffect(() => {
     const fetchRules = async () => {
       try {
-        const response = await apiFetch("/correlation-rules");
+        const response = await apiFetch("/correlation-rules/");
 
         if (!response.ok) {
           throw new Error("Failed to fetch correlation rules");
