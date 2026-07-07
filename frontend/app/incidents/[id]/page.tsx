@@ -5,9 +5,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { mockIncidents } from '../../data/mockIncidents';
 import { createIncident, deleteIncident, fetchIncident, updateIncident } from '../../services/incidentsApi';
+import { fetchAllUsers } from '../../services/usersApi';
 import type { Incident, IncidentPriority, IncidentStage } from '../../types/incident';
 
-const TEAM_MEMBERS = ['Dana G.', 'John D.', 'DevOps Team', 'Unassigned'];
 const STAGE_OPTIONS: IncidentStage[] = ['Open', 'In Progress', 'Resolved'];
 const PRIORITY_OPTIONS: IncidentPriority[] = ['P1', 'P2', 'P3', 'P4'];
 
@@ -46,6 +46,7 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
   );
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [systemUsers, setSystemUsers] = useState<string[]>([]);
 
   useEffect(() => {
     if (isNew) return;
@@ -53,6 +54,10 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
       if (data) setIncident(data);
     });
   }, [id, isNew]);
+
+  useEffect(() => {
+  fetchAllUsers().then(users => setSystemUsers(users.map(u => u.username)));
+}, []);
 
   const update = <K extends keyof Incident>(field: K, value: Incident[K]) => {
     setIncident(prev => ({ ...prev, [field]: value }));
@@ -135,7 +140,7 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
                   onChange={(e) => update('assignee', e.target.value)}
                   className="w-full bg-slate-950 border border-slate-700 text-white text-sm rounded-lg p-2 appearance-none focus:border-indigo-500 outline-none cursor-pointer"
                 >
-                  {TEAM_MEMBERS.map(m => <option key={m}>{m}</option>)}
+                  {systemUsers.map(u => <option key={u}>{u}</option>)}
                 </select>
                 <i className="fas fa-chevron-down absolute right-3 top-3 text-slate-500 text-xs pointer-events-none"></i>
               </div>

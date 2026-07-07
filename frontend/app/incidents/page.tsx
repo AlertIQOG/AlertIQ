@@ -7,8 +7,7 @@ import DataTable, { ColumnDef } from '../components/DataTable';
 import { mockIncidents } from '../data/mockIncidents';
 import { deleteIncident, fetchIncidents, updateIncident } from '../services/incidentsApi';
 import type { Incident, IncidentPriority, IncidentStage } from '../types/incident';
-
-const TEAM_MEMBERS = ['Dana G.', 'John D.', 'DevOps Team', 'Unassigned'];
+import { fetchAllUsers } from '../services/usersApi';
 
 const PRIORITY_STYLES: Record<IncidentPriority, string> = {
   P1: 'bg-red-500 text-white',
@@ -36,6 +35,20 @@ export default function IncidentsPage() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [systemUsers, setSystemUsers] = useState<string[]>([]);
+
+  useEffect(() => {
+    const loadUsers = async () => {
+      try {
+        const users = await fetchAllUsers();
+        const usernames = users.map(u => u.username);
+        setSystemUsers(usernames);
+      } catch (error) {
+        console.error("Failed to load users", error);
+      }
+    };
+    loadUsers();
+  }, []);
 
   const handleAssigneeChange = async (incidentId: string, assignee: string) => {
     setIncidents(prev => prev.map(i => i.id === incidentId ? { ...i, assignee } : i));
@@ -74,7 +87,7 @@ export default function IncidentsPage() {
     },
     {
       header: 'Priority',
-      className: 'w-24',
+      className: 'w-32',
       renderCell: (row) => (
         <span className={`px-2 py-1 text-[10px] font-bold rounded ${PRIORITY_STYLES[row.priority]}`}>
           {PRIORITY_LABELS[row.priority]}
@@ -97,7 +110,7 @@ export default function IncidentsPage() {
             onChange={(e) => handleAssigneeChange(row.id, e.target.value)}
             className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-2 py-1 text-xs outline-none cursor-pointer hover:border-slate-500 transition appearance-none w-full"
           >
-            {TEAM_MEMBERS.map(m => <option key={m}>{m}</option>)}
+            {systemUsers.map(u => <option key={u}>{u}</option>)}
           </select>
         </div>
       ),

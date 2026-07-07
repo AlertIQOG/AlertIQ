@@ -19,8 +19,8 @@ export default function DataTable<T>({ columns, data, onRowClick, rowClassName }
   return (
     <div className="w-full h-full bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm flex flex-col">
       <div className="w-full overflow-x-auto custom-scrollbar flex-1">
-      <table className="w-full text-left">
-        <thead className="bg-slate-800/50 text-xs uppercase font-semibold text-slate-500 border-b border-slate-800">
+      <table className="w-full text-left text-base">
+        <thead className="bg-slate-800/50 text-base uppercase font-semibold text-slate-500 border-b border-slate-800">
           <tr>
             {columns.map((col, idx) => (
               <th key={idx} className={`px-4 py-3 ${col.className || ''}`}>

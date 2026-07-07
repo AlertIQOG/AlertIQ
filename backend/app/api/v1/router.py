@@ -11,6 +11,7 @@ from app.api.v1 import (
     notes,
     notifications,
     sources,
+    users,
 )
 from app.api.v1.dependencies import get_current_user
 
@@ -58,4 +59,11 @@ router.include_router(
     prefix="/aggregated-alerts",
     tags=["Aggregated Alerts"],
     dependencies=protected,
+)
+
+router.include_router(
+    users.router, 
+    prefix="/users", 
+    tags=["Users"], 
+    dependencies=protected
 )

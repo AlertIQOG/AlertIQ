@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, AlertSeverity } from '../types/alert';
 import { createIncident } from '../services/incidentsApi';
 import type { IncidentPriority } from '../types/incident';
+import { fetchAllUsers } from '../services/usersApi';
 
 const SEVERITY_TO_PRIORITY: Record<AlertSeverity, IncidentPriority> = {
   Critical: 'P1',
@@ -18,8 +19,6 @@ const PRIORITY_LABELS: Record<IncidentPriority, string> = {
   P3: 'P3 · Medium',
   P4: 'P4 · Low',
 };
-
-const TEAM_MEMBERS = ['Dana G.', 'John D.', 'DevOps Team', 'Unassigned'];
 
 const SEVERITY_DOT: Record<AlertSeverity, string> = {
   Critical: 'bg-red-500',
@@ -48,6 +47,21 @@ export default function PromoteToIncidentModal({ alerts, onClose, onSuccess }: P
   const [assignee, setAssignee] = useState('Unassigned');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [systemUsers, setSystemUsers] = useState<string[]>([]);
+
+  // Get the list of system users when the component mounts
+  useEffect(() => {
+    const loadUsers = async () => {
+      try {
+        const users = await fetchAllUsers();
+        const usernames = users.map(u => u.username);
+        setSystemUsers(usernames);
+      } catch (error) {
+        console.error("Failed to load users", error);
+      }
+    };
+    loadUsers();
+  }, []);
 
   const handleSubmit = async () => {
     if (!title.trim()) return;
@@ -125,7 +139,7 @@ export default function PromoteToIncidentModal({ alerts, onClose, onSuccess }: P
                 onChange={(e) => setAssignee(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700 text-white rounded-lg px-3 py-2 text-sm outline-none appearance-none focus:border-indigo-500 cursor-pointer"
               >
-                {TEAM_MEMBERS.map(m => <option key={m}>{m}</option>)}
+                {systemUsers.map(u => <option key={u}>{u}</option>)}
               </select>
             </div>
           </div>
