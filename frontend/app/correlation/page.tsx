@@ -9,6 +9,8 @@ import { apiFetch } from "../services/apiClient";
 export default function CorrelationRulesPage() {
   const [rules, setRules] = useState<CorrelationRule[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [ruleToDelete, setRuleToDelete] = useState<CorrelationRule | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const fetchRules = async () => {
@@ -54,6 +56,31 @@ export default function CorrelationRulesPage() {
     );
   };
 
+  const handleDeleteRule = async () => {
+    if (!ruleToDelete) return;
+
+    try {
+      setIsDeleting(true);
+
+      const response = await apiFetch(`/correlation-rules/${ruleToDelete.id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete correlation rule");
+      }
+
+      setRules((prevRules) =>
+        prevRules.filter((rule) => rule.id !== ruleToDelete.id)
+      );
+
+      setRuleToDelete(null);
+    } catch (error) {
+      console.error("Error deleting correlation rule:", error);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
   const filteredRules = rules.filter((rule) =>
     rule.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -96,11 +123,55 @@ export default function CorrelationRulesPage() {
         </div>
 
         {/* Table */}
-        <CorrelationRulesTable 
-          rules={filteredRules} 
-          onToggleActive={handleToggleActive} 
+        <CorrelationRulesTable
+          rules={filteredRules}
+          onToggleActive={handleToggleActive}
+          onDeleteRule={setRuleToDelete}
         />
       </div>
+      {ruleToDelete && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+        <div className="w-full max-w-md bg-slate-900 border border-red-500/40 rounded-2xl shadow-2xl p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center text-red-400">
+              <i className="fas fa-triangle-exclamation"></i>
+            </div>
+
+            <div>
+              <h2 className="text-white font-bold text-lg">Delete Rule</h2>
+              <p className="text-xs text-slate-400">
+                This action cannot be undone.
+              </p>
+            </div>
+          </div>
+
+          <p className="text-sm text-slate-300 mb-6">
+            Are you sure you want to delete{" "}
+            <span className="font-bold text-white">{ruleToDelete.name}</span>?
+          </p>
+
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setRuleToDelete(null)}
+              className="px-4 py-2 rounded-lg text-sm text-slate-300 bg-slate-800 hover:bg-slate-700 transition"
+              disabled={isDeleting}
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDeleteRule}
+              disabled={isDeleting}
+              className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-500 disabled:opacity-60 transition shadow-lg shadow-red-500/20"
+            >
+              {isDeleting ? "Deleting..." : "Delete Rule"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </main>
   );
 }
