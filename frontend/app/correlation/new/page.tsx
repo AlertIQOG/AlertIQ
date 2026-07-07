@@ -5,6 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CorrelationCondition } from "../../types/correlation";
 import { apiFetch } from "../../services/apiClient";
+import {
+  ACTION_OPTIONS,
+  DEFAULT_ACTIONS,
+  toggleAction,
+  type CorrelationActionId,
+} from "../actions";
 
 const DEFAULT_ENVIRONMENTS = ["PROD", "STG"];
 const sourceOptions = ["Prometheus", "Grafana"];
@@ -28,6 +34,14 @@ export default function CreateCorrelationRulePage() {
   const [conditions, setConditions] = useState<CorrelationCondition[]>([
     { id: "1", metric: "cpu_usage", operator: "Greater than", value: "90%" },
   ]);
+
+  // Actions (multiselect): aggregate alerts and/or send email
+  const [selectedActions, setSelectedActions] =
+    useState<CorrelationActionId[]>(DEFAULT_ACTIONS);
+
+  const handleToggleAction = (id: CorrelationActionId) => {
+    setSelectedActions((prev) => toggleAction(prev, id));
+  };
 
 useEffect(() => {
   const fetchEnvironmentOptions = async () => {
@@ -159,6 +173,7 @@ useEffect(() => {
       })),
       time_window_minutes: finalTimeWindow,
       group_by: ["service", "host"],
+      actions: selectedActions,
     };
 
     const response = await apiFetch("/correlation-rules/", {
@@ -401,20 +416,47 @@ useEffect(() => {
 
             <div className="flex flex-col gap-2">
               <label className="text-xs font-semibold text-slate-400 uppercase">
-                Action
+                Actions
               </label>
-              <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 flex items-center gap-3">
-                <div className="bg-orange-500/20 text-orange-400 p-2 rounded-md">
-                  <i className="fas fa-layer-group"></i>
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-white">
-                    Group to Aggregated Alert
-                  </div>
-                  <div className="text-xs text-slate-500">
-                    Create a single parent alert
-                  </div>
-                </div>
+              <div className="flex flex-col gap-2">
+                {ACTION_OPTIONS.map((action) => {
+                  const isSelected = selectedActions.includes(action.id);
+                  return (
+                    <button
+                      key={action.id}
+                      type="button"
+                      role="checkbox"
+                      aria-checked={isSelected}
+                      onClick={() => handleToggleAction(action.id)}
+                      className={`bg-slate-900 border rounded-lg p-3 flex items-center gap-3 text-left transition ${
+                        isSelected
+                          ? "border-indigo-500 ring-1 ring-indigo-500/40"
+                          : "border-slate-700 hover:border-slate-500"
+                      }`}
+                    >
+                      <div
+                        className={`w-5 h-5 shrink-0 rounded border flex items-center justify-center text-[10px] ${
+                          isSelected
+                            ? "bg-indigo-600 border-indigo-500 text-white"
+                            : "border-slate-600 text-transparent"
+                        }`}
+                      >
+                        <i className="fas fa-check"></i>
+                      </div>
+                      <div className="bg-orange-500/20 text-orange-400 p-2 rounded-md">
+                        <i className={action.icon}></i>
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-white">
+                          {action.label}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {action.description}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>

@@ -29,6 +29,12 @@ class CorrelationRule(SQLModel, table=True):
     # Defines which alert fields are used to group alerts together
     group_by: list[str] = Field(default_factory=list, sa_column=Column(JSONB))
 
+    # Actions to run when the rule matches (multiselect): "aggregate" folds the
+    # alerts into an aggregated alert, "email" sends an email notification.
+    actions: list[str] = Field(
+        default_factory=lambda: ["aggregate"], sa_column=Column(JSONB)
+    )
+
     created_at: datetime | None = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False),

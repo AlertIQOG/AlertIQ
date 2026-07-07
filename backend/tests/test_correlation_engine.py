@@ -75,6 +75,7 @@ def make_rule(
     conditions: list[dict] | None = None,
     group_by: list[str] | None = None,
     time_window_minutes: int = 5,
+    actions: list[str] | None = None,
 ) -> CorrelationRule:
     return CorrelationRule(
         name=name,
@@ -82,6 +83,7 @@ def make_rule(
         conditions=conditions or [{"field": "severity", "operator": "is_present"}],
         group_by=group_by or ["service"],
         time_window_minutes=time_window_minutes,
+        actions=actions if actions is not None else ["aggregate"],
     )
 
 
@@ -334,8 +336,32 @@ def aggregates() -> FakeAggregateService:
     return FakeAggregateService()
 
 
-def build_engine(rules: list[CorrelationRule], aggregates: FakeAggregateService) -> CorrelationEngine:
-    return CorrelationEngine(rule_service=FakeRuleService(rules), aggregate_service=aggregates)
+class FakeNotifier:
+    """Captures every (rule, alerts, channels) dispatch the engine performs."""
+
+    def __init__(self):
+        self.calls: list[dict] = []
+
+    def __call__(self, rule, alerts, *, channels=None, to=None):
+        self.calls.append({"rule": rule, "alerts": alerts, "channels": channels})
+        return []
+
+
+@pytest.fixture
+def notifier() -> FakeNotifier:
+    return FakeNotifier()
+
+
+def build_engine(
+    rules: list[CorrelationRule],
+    aggregates: FakeAggregateService,
+    notifier: "FakeNotifier | None" = None,
+) -> CorrelationEngine:
+    return CorrelationEngine(
+        rule_service=FakeRuleService(rules),
+        aggregate_service=aggregates,
+        notifier=notifier,
+    )
 
 
 # ── orchestration behaviour ───────────────────────────────────────────
@@ -439,4 +465,71 @@ def test_process_first_matching_rule_wins(aggregates):
     agg = engine.process_alert(None, alert, now=NOW)
 
     assert agg.rule_name == "A"
+    assert len(aggregates.store) == 1
+
+
+# ── action-driven behaviour ───────────────────────────────────────────
+
+
+def test_aggregate_action_does_not_send_email(aggregates, notifier):
+    rule = make_rule(group_by=["service"], actions=["aggregate"])
+    engine = build_engine([rule], aggregates, notifier)
+
+    engine.process_alert(None, make_alert(labels={"service": "payments"}), now=NOW)
+
+    assert len(aggregates.store) == 1
+    assert notifier.calls == []  # no email action → no notification
+
+
+def test_email_action_dispatches_email_notification(aggregates, notifier):
+    rule = make_rule(group_by=["service"], actions=["aggregate", "email"])
+    engine = build_engine([rule], aggregates, notifier)
+
+    alert = make_alert(labels={"service": "payments"})
+    engine.process_alert(None, alert, now=NOW)
+
+    assert len(aggregates.store) == 1  # still aggregates
+    assert len(notifier.calls) == 1
+    call = notifier.calls[0]
+    assert call["rule"] is rule
+    assert call["alerts"] == [alert]
+    assert call["channels"] == ["email"]
+
+
+def test_email_only_action_sends_email_without_aggregating(aggregates, notifier):
+    rule = make_rule(group_by=["service"], actions=["email"])
+    engine = build_engine([rule], aggregates, notifier)
+
+    result = engine.process_alert(None, make_alert(labels={"service": "payments"}), now=NOW)
+
+    assert result is None  # email-only rule does not open an aggregate
+    assert aggregates.store == []
+    assert len(notifier.calls) == 1
+    assert notifier.calls[0]["channels"] == ["email"]
+
+
+def test_email_not_sent_when_rule_does_not_match(aggregates, notifier):
+    rule = make_rule(
+        conditions=[{"field": "env", "operator": "equals", "value": "prod"}],
+        actions=["email"],
+    )
+    engine = build_engine([rule], aggregates, notifier)
+
+    alert = make_alert(labels={"env": "dev", "service": "api"})
+    engine.process_alert(None, alert, now=NOW)
+
+    assert notifier.calls == []
+
+
+def test_email_action_failure_does_not_break_correlation(aggregates):
+    def boom(rule, alerts, *, channels=None, to=None):
+        raise RuntimeError("smtp down")
+
+    rule = make_rule(group_by=["service"], actions=["aggregate", "email"])
+    engine = build_engine([rule], aggregates, boom)
+
+    # The aggregate must still be created even though the email raised.
+    agg = engine.process_alert(None, make_alert(labels={"service": "payments"}), now=NOW)
+
+    assert agg is not None
     assert len(aggregates.store) == 1

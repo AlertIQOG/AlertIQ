@@ -1,5 +1,7 @@
 // types/correlation.ts
 
+import type { CorrelationActionId } from "../correlation/actions";
+
 // Represents a single condition within a correlation rule, as defined in the form
 export interface CorrelationCondition {
   id: string;
@@ -13,12 +15,15 @@ export interface CorrelationRule {
   id: string;
   name: string;
   isActive: boolean;
-  
+
   // Time Window - a text field containing the number and unit (e.g., "45 Minutes")
   timeWindow: string;
-  
+
   // Array of dynamic conditions from the form
   conditions?: CorrelationCondition[];
+
+  // Actions to run when the rule matches (multiselect): "aggregate" and/or "email"
+  actions?: CorrelationActionId[];
   
   // Helper fields for table display
   logicSummary: {
