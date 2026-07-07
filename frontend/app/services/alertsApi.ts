@@ -1,4 +1,4 @@
-import { Alert } from '../types/alert';
+import { Alert, AlertNote } from '../types/alert';
 import { CopilotSuggestion } from '../types/copilot';
 import { apiFetch } from './apiClient';
 
@@ -114,34 +114,62 @@ export async function updateAlertAssignee(alertId: string, assignee: string | nu
   }
 }
 
-async function patchAlertNotes(alert: Alert, notes: { content: string; created_at: string }[]): Promise<Alert | null> {
+// Notes live in their own `notes` table (via /alerts/{id}/notes), NOT in
+// extra_fields. This matters: when the parent alert is Solved, the backend
+// re-embeds it on every note change so the note reaches the RAG index the
+// Resolution Copilot retrieves from. Writing notes into extra_fields would
+// silently skip that indexing.
+
+export async function fetchAlertNotes(alertId: string): Promise<AlertNote[]> {
   try {
-    const response = await apiFetch(`/alerts/${alert.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ extra_fields: { ...alert.extra_fields, _notes: notes } }),
+    const response = await apiFetch(`/alerts/${alertId}/notes/`);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return await response.json() as AlertNote[];
+  } catch (error) {
+    console.error('Error fetching notes:', error);
+    return [];
+  }
+}
+
+export async function addAlertNote(alertId: string, author: string, content: string): Promise<AlertNote | null> {
+  try {
+    const response = await apiFetch(`/alerts/${alertId}/notes/`, {
+      method: 'POST',
+      body: JSON.stringify({ author, content }),
     });
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    return await response.json() as Alert;
+    return await response.json() as AlertNote;
   } catch (error) {
-    console.error('Error patching notes:', error);
+    console.error('Error adding note:', error);
     return null;
   }
 }
 
-export async function addAlertNote(alert: Alert, content: string): Promise<Alert | null> {
-  const existing = (alert.extra_fields?._notes as { content: string; created_at: string }[]) ?? [];
-  return patchAlertNotes(alert, [...existing, { content, created_at: new Date().toISOString() }]);
+export async function updateAlertNote(alertId: string, noteId: string, content: string): Promise<AlertNote | null> {
+  try {
+    const response = await apiFetch(`/alerts/${alertId}/notes/${noteId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ content }),
+    });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return await response.json() as AlertNote;
+  } catch (error) {
+    console.error('Error updating note:', error);
+    return null;
+  }
 }
 
-export async function updateAlertNote(alert: Alert, index: number, content: string): Promise<Alert | null> {
-  const notes = [...((alert.extra_fields?._notes as { content: string; created_at: string }[]) ?? [])];
-  notes[index] = { ...notes[index], content };
-  return patchAlertNotes(alert, notes);
-}
-
-export async function deleteAlertNote(alert: Alert, index: number): Promise<Alert | null> {
-  const notes = ((alert.extra_fields?._notes as { content: string; created_at: string }[]) ?? []).filter((_, i) => i !== index);
-  return patchAlertNotes(alert, notes);
+export async function deleteAlertNote(alertId: string, noteId: string): Promise<boolean> {
+  try {
+    const response = await apiFetch(`/alerts/${alertId}/notes/${noteId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return true;
+  } catch (error) {
+    console.error('Error deleting note:', error);
+    return false;
+  }
 }
 
 export async function fetchCopilotSuggestion(
