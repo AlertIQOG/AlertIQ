@@ -47,6 +47,7 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [systemUsers, setSystemUsers] = useState<string[]>([]);
+  const [titleError, setTitleError] = useState('');
 
   useEffect(() => {
     if (isNew) return;
@@ -64,10 +65,19 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
   };
 
   const handleSave = async () => {
+    const trimmedTitle = incident.title.trim();
+
+    if (!trimmedTitle) {
+      setTitleError('Incident title is required');
+      return;
+    }
+
+    setTitleError('');
     setSaving(true);
+
     if (isNew) {
       await createIncident({
-        title: incident.title,
+        title: trimmedTitle,
         priority: incident.priority,
         stage: incident.stage,
         assignee: incident.assignee,
@@ -77,7 +87,7 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
       });
     } else {
       await updateIncident(id, {
-        title: incident.title,
+        title: trimmedTitle,
         priority: incident.priority,
         stage: incident.stage,
         assignee: incident.assignee,
@@ -85,6 +95,7 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
         affectedServices: incident.affectedServices,
       });
     }
+
     setSaving(false);
     router.push('/incidents');
   };
@@ -133,6 +144,32 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
 
           <div className="grid grid-cols-4 gap-4 mb-8">
             <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 mb-4">
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
+                  Incident Title
+                </label>
+
+                <input
+                  type="text"
+                  value={incident.title}
+                  onChange={(e) => {
+                    update('title', e.target.value);
+                    if (titleError) setTitleError('');
+                  }}
+                  placeholder="e.g. Database outage risk"
+                  className={`w-full bg-slate-950 border rounded-lg px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 ${
+                    titleError
+                      ? 'border-red-500 focus:border-red-400'
+                      : 'border-slate-700 focus:border-indigo-500'
+                  }`}
+                />
+
+                {titleError && (
+                  <p className="text-xs text-red-400 mt-2">
+                    {titleError}
+                  </p>
+                )}
+              </div>
               <label className="block text-[10px] text-slate-500 font-bold uppercase mb-2">Assignee</label>
               <div className="relative">
                 <select
