@@ -44,6 +44,17 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
     return new Date(dateString).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
   };
 
+  // Metadata cell: one consistent text size, truncates long values to a single
+  // line with an ellipsis, and reveals the full value on hover (title tooltip).
+  const metaCell = (value: string | null | undefined, maxW: string, fallback = '—') =>
+    value ? (
+      <span className={`block truncate text-xs text-slate-400 ${maxW}`} title={value}>
+        {value}
+      </span>
+    ) : (
+      <span className="text-xs text-slate-500">{fallback}</span>
+    );
+
   // Empty state check
   if (!alerts || alerts.length === 0) {
     return (
@@ -79,15 +90,15 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
       header: 'Message',
       renderCell: (alert) => (
         <>
-          <div className="font-medium text-white flex items-center gap-2">
+          <div className="text-sm font-medium text-white flex items-center gap-2">
             {alert.isAggregated && (
               <span className="inline-flex items-center gap-1 text-[9px] bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-1.5 py-0.5 rounded font-bold shrink-0">
                 <i className="fas fa-layer-group"></i> AGG · {alert.childCount}
               </span>
             )}
-            {alert.message}
+            <span className="truncate min-w-0 max-w-[460px]" title={alert.message}>{alert.message}</span>
           </div>
-          <div className="text-xs text-slate-500 mt-0.5">ID: {alert.external_id}</div>
+          <div className="text-xs text-slate-500 mt-0.5 truncate max-w-[460px]" title={alert.external_id}>ID: {alert.external_id}</div>
         </>
       )
     },
@@ -95,7 +106,10 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
       header: 'Region',
       className: 'w-24',
       renderCell: (alert) => (
-        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-slate-300 border border-slate-600">
+        <span
+          className="inline-block max-w-[100px] truncate align-middle whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-slate-300 border border-slate-600"
+          title={alert.region || 'Unknown'}
+        >
           {alert.region || 'Unknown'}
         </span>
       )
@@ -103,58 +117,46 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
     application: {
       header: 'Application',
       className: 'w-32',
-      renderCell: (alert) => (
-        <span className="text-xs text-slate-400">
-          {alert.application || 'System'}
-        </span>
-      )
+      renderCell: (alert) => metaCell(alert.application, 'max-w-[140px]', 'System')
     },
     component: {
       header: 'Component',
       className: 'w-28',
-      renderCell: (alert) => (
-        <span className="text-xs text-slate-400">
-          {alert.component || '—'}
-        </span>
-      )
+      renderCell: (alert) => metaCell(alert.component, 'max-w-[120px]')
     },
     impact: {
       header: 'Impact',
       className: 'w-28',
-      renderCell: (alert) => (
-        <span className="text-xs text-slate-400">
-          {alert.impact || '—'}
-        </span>
-      )
+      renderCell: (alert) => metaCell(alert.impact, 'max-w-[150px]')
     },
     node_name: {
       header: 'Node Name',
       className: 'w-28',
       renderCell: (alert) => (
-        <span className="text-xs text-slate-400 font-mono">
-          {alert.node_name || '—'}
-        </span>
+        alert.node_name ? (
+          <span className="block truncate text-xs text-slate-400 font-mono max-w-[120px]" title={alert.node_name}>
+            {alert.node_name}
+          </span>
+        ) : (
+          <span className="text-xs text-slate-500">—</span>
+        )
       )
     },
     operator: {
       header: 'Operator',
       className: 'w-28',
-      renderCell: (alert) => (
-        <span className="text-xs text-slate-400">
-          {alert.operator || '—'}
-        </span>
-      )
+      renderCell: (alert) => metaCell(alert.operator, 'max-w-[120px]')
     },
     assignee: {
       header: 'Assignee',
       className: 'w-28',
       renderCell: (alert) => (
         alert.assignee ? (
-          <span className="inline-flex items-center gap-1.5 text-xs text-slate-300">
-            <span className="w-5 h-5 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-[9px] font-bold text-white">
+          <span className="inline-flex items-center gap-1.5 text-xs text-slate-300 max-w-[110px]">
+            <span className="w-5 h-5 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-[9px] font-bold text-white shrink-0">
               {alert.assignee.slice(0, 2).toUpperCase()}
             </span>
-            {alert.assignee}
+            <span className="truncate min-w-0" title={alert.assignee}>{alert.assignee}</span>
           </span>
         ) : (
           <span className="text-xs text-slate-500">Unassigned</span>
