@@ -17,12 +17,16 @@ export async function fetchAlerts(
   limit: number = 100,
   severity: string = 'ALL',
   status: string = 'ALL',
-  region: string = 'ALL'
+  region: string = 'ALL',
+  sortBy: string = 'created_at',
+  sortDir: string = 'desc'
 ): Promise<Alert[]> {
   try {
     const params = new URLSearchParams({
       skip: skip.toString(),
       limit: limit.toString(),
+      sort_by: sortBy,
+      sort_dir: sortDir,
     });
 
     if (severity !== 'ALL') params.append('severity', severity);

@@ -14,7 +14,12 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query, status
 
-from app.api.v1.dependencies import AlertFilterParams, DbSession, PaginationParams
+from app.api.v1.dependencies import (
+    AlertFilterParams,
+    AlertSortParams,
+    DbSession,
+    PaginationParams,
+)
 from app.core.exceptions import NotFoundError
 from app.models.alert import Alert
 from app.schemas.alert import AggregateRequest, AlertCreate, AlertRead, AlertUpdate
@@ -46,20 +51,22 @@ def list_alerts(
     session: DbSession,
     pagination: PaginationParams = Depends(),
     filters: AlertFilterParams = Depends(),
+    sort: AlertSortParams = Depends(),
 ) -> list[AlertRead]:
     """
-    List alerts with optional server-side filtering and pagination.
+    List alerts with optional server-side filtering, ordering, and pagination.
 
     All filter parameters are optional and combined with AND logic.
-    Pagination (``skip``/``limit``) is applied **after** filtering.
+    Ordering defaults to newest-first (``created_at`` descending).
+    Pagination (``skip``/``limit``) is applied **after** filtering and ordering.
     """
     return alert_service.get_filtered(
         session,
         filters=filters.to_dict(),
         skip=pagination.skip,
         limit=pagination.limit,
-        order_by="created_at",
-        order_desc=True,
+        order_by=sort.sort_by,
+        order_desc=sort.order_desc,
     )
 @router.post("/aggregate", response_model=AlertRead, status_code=status.HTTP_201_CREATED)
 def aggregate_alerts(*, session: DbSession, body: AggregateRequest) -> AlertRead:

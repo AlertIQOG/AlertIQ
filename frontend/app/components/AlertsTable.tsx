@@ -9,9 +9,14 @@ interface AlertsTableProps {
   visibleColumns?: string[];
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
+  defaultSortKey?: string;
+  defaultSortDir?: 'asc' | 'desc';
+  onSort?: (key: string) => void;
 }
 
-export default function AlertsTable({ alerts, onRowClick, visibleColumns, selectedIds, onToggleSelect }: AlertsTableProps) {
+export default function AlertsTable({ alerts, onRowClick, visibleColumns, selectedIds, onToggleSelect, sortBy, sortDir, defaultSortKey, defaultSortDir, onSort }: AlertsTableProps) {
   
   // Helper functions — kept exactly as they were
   const getSeverityStyles = (severity: string) => {
@@ -189,7 +194,9 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
   const activeKeys = visibleColumns || DEFAULT_VISIBLE_KEYS;
   const alertColumns: ColumnDef<Alert>[] = activeKeys
     .filter((key) => columnRenderers[key])
-    .map((key) => columnRenderers[key]);
+    // Every column key is a real Alert field, so it doubles as its sort key —
+    // sortable columns derive from what's visible, nothing hardcoded.
+    .map((key) => ({ ...columnRenderers[key], sortKey: key }));
 
   // Always add the chevron "details" column at the end
   alertColumns.push({
@@ -229,6 +236,11 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
       columns={alertColumns}
       data={alerts}
       onRowClick={onRowClick}
+      sortBy={sortBy}
+      sortDir={sortDir}
+      defaultSortKey={defaultSortKey}
+      defaultSortDir={defaultSortDir}
+      onSort={onSort}
       rowClassName={(alert) =>
         alert.isAggregated
           ? 'border-l-2 border-indigo-500/60 bg-indigo-950/20'

@@ -17,6 +17,8 @@ export default function Home() {
   const [sevFilter, setSevFilter] = useState('ALL');
   const [envFilter, setEnvFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('Open');
+  // Active column sort, or null for the default order (time, newest first).
+  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
 
   // State for alerts data and loading indicators
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -64,18 +66,19 @@ export default function Home() {
   useEffect(() => {
     const loadAlerts = async () => {
       setIsFetching(true);
-      const data = await fetchAlerts(0, 100, sevFilter, statusFilter, envFilter);
+      const data = await fetchAlerts(0, 100, sevFilter, statusFilter, envFilter, sort?.key ?? 'created_at', sort?.dir ?? 'desc');
       setAlerts(data);
       setIsFetching(false);
       setIsInitialLoading(false);
     };
     loadAlerts();
-  }, [sevFilter, statusFilter, envFilter]);
+  }, [sevFilter, statusFilter, envFilter, sort]);
 
   const handleReset = () => {
     setSevFilter('ALL');
     setEnvFilter('ALL');
     setStatusFilter('ALL');
+    setSort(null);
   };
 
   const handleToggleSelect = useCallback((id: string) => {
@@ -87,9 +90,19 @@ export default function Home() {
   }, []);
 
   const refreshAlerts = useCallback(async () => {
-    const data = await fetchAlerts(0, 100, sevFilter, statusFilter, envFilter);
+    const data = await fetchAlerts(0, 100, sevFilter, statusFilter, envFilter, sort?.key ?? 'created_at', sort?.dir ?? 'desc');
     setAlerts(data);
-  }, [sevFilter, statusFilter, envFilter]);
+  }, [sevFilter, statusFilter, envFilter, sort]);
+
+  // Clicking a column cycles asc → desc → off (back to the default time order).
+  // Ordering is applied server-side.
+  const handleSort = useCallback((key: string) => {
+    setSort(prev => {
+      if (!prev || prev.key !== key) return { key, dir: 'asc' };
+      if (prev.dir === 'asc') return { key, dir: 'desc' };
+      return null;
+    });
+  }, []);
 
   const handleAggregate = async () => {
     if (selectedAlertIds.size < 2) return;
@@ -181,6 +194,11 @@ export default function Home() {
                 visibleColumns={visibleColumns}
                 selectedIds={selectedAlertIds}
                 onToggleSelect={handleToggleSelect}
+                sortBy={sort?.key}
+                sortDir={sort?.dir}
+                defaultSortKey="created_at"
+                defaultSortDir="desc"
+                onSort={handleSort}
               />
             </div>
           )}
