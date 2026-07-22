@@ -4,7 +4,7 @@ Shared FastAPI dependencies for API v1 routes.
 
 import secrets
 import uuid
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import Depends, Header, Query
 from fastapi.security import OAuth2PasswordBearer
@@ -96,6 +96,47 @@ class PaginationParams:
     ) -> None:
         self.skip = skip
         self.limit = limit
+
+
+# Fields the alerts feed may be ordered by — an explicit allow-list so the
+# clickable column headers can only request real, safe columns. Severity and
+# status are ordered by triage rank (not alphabetically) in ``AlertService``.
+AlertSortField = Literal[
+    "severity",
+    "status",
+    "message",
+    "region",
+    "application",
+    "component",
+    "impact",
+    "node_name",
+    "operator",
+    "assignee",
+    "external_id",
+    "created_at",
+    "updated_at",
+]
+
+
+class AlertSortParams:
+    """
+    Ordering query parameters for the alerts endpoint.
+
+    Usage in a route:
+        def list_alerts(sort: AlertSortParams = Depends()):
+    """
+
+    def __init__(
+        self,
+        sort_by: AlertSortField = Query(
+            "created_at", description="Field to order the feed by"
+        ),
+        sort_dir: Literal["asc", "desc"] = Query(
+            "desc", description="Order direction (ascending or descending)"
+        ),
+    ) -> None:
+        self.sort_by = sort_by
+        self.order_desc = sort_dir == "desc"
 
 
 class FilterParams:

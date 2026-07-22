@@ -9,9 +9,14 @@ interface AlertsTableProps {
   visibleColumns?: string[];
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
+  defaultSortKey?: string;
+  defaultSortDir?: 'asc' | 'desc';
+  onSort?: (key: string) => void;
 }
 
-export default function AlertsTable({ alerts, onRowClick, visibleColumns, selectedIds, onToggleSelect }: AlertsTableProps) {
+export default function AlertsTable({ alerts, onRowClick, visibleColumns, selectedIds, onToggleSelect, sortBy, sortDir, defaultSortKey, defaultSortDir, onSort }: AlertsTableProps) {
   
   // Helper functions — kept exactly as they were
   const getSeverityStyles = (severity: string) => {
@@ -38,6 +43,17 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
   };
+
+  // Metadata cell: one consistent text size, truncates long values to a single
+  // line with an ellipsis, and reveals the full value on hover (title tooltip).
+  const metaCell = (value: string | null | undefined, maxW: string, fallback = '—') =>
+    value ? (
+      <span className={`block truncate text-xs text-slate-400 ${maxW}`} title={value}>
+        {value}
+      </span>
+    ) : (
+      <span className="text-xs text-slate-500">{fallback}</span>
+    );
 
   // Empty state check
   if (!alerts || alerts.length === 0) {
@@ -74,15 +90,23 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
       header: 'Message',
       renderCell: (alert) => (
         <>
-          <div className="font-medium text-white flex items-center gap-2">
+          <div className="text-sm font-medium text-white flex items-center gap-2">
             {alert.isAggregated && (
               <span className="inline-flex items-center gap-1 text-[9px] bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-1.5 py-0.5 rounded font-bold shrink-0">
                 <i className="fas fa-layer-group"></i> AGG · {alert.childCount}
               </span>
             )}
-            {alert.message}
+            {alert.open_incident_id && (
+              <span
+                className="inline-flex items-center gap-1 text-[9px] bg-red-500/15 text-red-400 border border-red-500/30 px-1.5 py-0.5 rounded font-bold shrink-0"
+                title="An incident is already open for this alert"
+              >
+                <i className="fas fa-fire-flame-curved"></i> INCIDENT
+              </span>
+            )}
+            <span className="truncate min-w-0 max-w-[460px]" title={alert.message}>{alert.message}</span>
           </div>
-          <div className="text-xs text-slate-500 mt-0.5">ID: {alert.external_id}</div>
+          <div className="text-xs text-slate-500 mt-0.5 truncate max-w-[460px] font-mono" title={alert.id}>ID: {alert.id}</div>
         </>
       )
     },
@@ -90,7 +114,10 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
       header: 'Region',
       className: 'w-24',
       renderCell: (alert) => (
-        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-slate-300 border border-slate-600">
+        <span
+          className="inline-block max-w-[100px] truncate align-middle whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-slate-300 border border-slate-600"
+          title={alert.region || 'Unknown'}
+        >
           {alert.region || 'Unknown'}
         </span>
       )
@@ -98,58 +125,46 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
     application: {
       header: 'Application',
       className: 'w-32',
-      renderCell: (alert) => (
-        <span className="text-xs text-slate-400">
-          {alert.application || 'System'}
-        </span>
-      )
+      renderCell: (alert) => metaCell(alert.application, 'max-w-[140px]', 'System')
     },
     component: {
       header: 'Component',
       className: 'w-28',
-      renderCell: (alert) => (
-        <span className="text-xs text-slate-400">
-          {alert.component || '—'}
-        </span>
-      )
+      renderCell: (alert) => metaCell(alert.component, 'max-w-[120px]')
     },
     impact: {
       header: 'Impact',
       className: 'w-28',
-      renderCell: (alert) => (
-        <span className="text-xs text-slate-400">
-          {alert.impact || '—'}
-        </span>
-      )
+      renderCell: (alert) => metaCell(alert.impact, 'max-w-[150px]')
     },
     node_name: {
       header: 'Node Name',
       className: 'w-28',
       renderCell: (alert) => (
-        <span className="text-xs text-slate-400 font-mono">
-          {alert.node_name || '—'}
-        </span>
+        alert.node_name ? (
+          <span className="block truncate text-xs text-slate-400 font-mono max-w-[120px]" title={alert.node_name}>
+            {alert.node_name}
+          </span>
+        ) : (
+          <span className="text-xs text-slate-500">—</span>
+        )
       )
     },
     operator: {
       header: 'Operator',
       className: 'w-28',
-      renderCell: (alert) => (
-        <span className="text-xs text-slate-400">
-          {alert.operator || '—'}
-        </span>
-      )
+      renderCell: (alert) => metaCell(alert.operator, 'max-w-[120px]')
     },
     assignee: {
       header: 'Assignee',
       className: 'w-28',
       renderCell: (alert) => (
         alert.assignee ? (
-          <span className="inline-flex items-center gap-1.5 text-xs text-slate-300">
-            <span className="w-5 h-5 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-[9px] font-bold text-white">
+          <span className="inline-flex items-center gap-1.5 text-xs text-slate-300 max-w-[110px]">
+            <span className="w-5 h-5 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-[9px] font-bold text-white shrink-0">
               {alert.assignee.slice(0, 2).toUpperCase()}
             </span>
-            {alert.assignee}
+            <span className="truncate min-w-0" title={alert.assignee}>{alert.assignee}</span>
           </span>
         ) : (
           <span className="text-xs text-slate-500">Unassigned</span>
@@ -189,7 +204,9 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
   const activeKeys = visibleColumns || DEFAULT_VISIBLE_KEYS;
   const alertColumns: ColumnDef<Alert>[] = activeKeys
     .filter((key) => columnRenderers[key])
-    .map((key) => columnRenderers[key]);
+    // Every column key is a real Alert field, so it doubles as its sort key —
+    // sortable columns derive from what's visible, nothing hardcoded.
+    .map((key) => ({ ...columnRenderers[key], sortKey: key }));
 
   // Always add the chevron "details" column at the end
   alertColumns.push({
@@ -229,6 +246,11 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
       columns={alertColumns}
       data={alerts}
       onRowClick={onRowClick}
+      sortBy={sortBy}
+      sortDir={sortDir}
+      defaultSortKey={defaultSortKey}
+      defaultSortDir={defaultSortDir}
+      onSort={onSort}
       rowClassName={(alert) =>
         alert.isAggregated
           ? 'border-l-2 border-indigo-500/60 bg-indigo-950/20'

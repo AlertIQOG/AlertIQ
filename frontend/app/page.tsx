@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import AlertsTable from './components/AlertsTable';
 import ColumnPicker from './components/ColumnPicker';
@@ -11,12 +11,18 @@ import PromoteToIncidentModal from './components/PromoteToIncidentModal';
 import PageHeader from './components/PageHeader';
 import { DEFAULT_VISIBLE_KEYS, STORAGE_KEY } from './data/columnConfig';
 
+// Rows fetched per page. Infinite scroll appends a page at a time and stops
+// once the backend returns a short page (fewer than PAGE_SIZE rows).
+const PAGE_SIZE = 25;
+
 export default function Home() {
   const router = useRouter();
   // State for filters
   const [sevFilter, setSevFilter] = useState('ALL');
   const [envFilter, setEnvFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('Open');
+  // Active column sort, or null for the default order (time, newest first).
+  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
 
   // State for alerts data and loading indicators
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -29,6 +35,14 @@ export default function Home() {
   const [selectedAlertIds, setSelectedAlertIds] = useState<Set<string>>(new Set());
   const [showPromoteModal, setShowPromoteModal] = useState(false);
   const [isAggregating, setIsAggregating] = useState(false);
+
+  // ── Infinite-scroll pagination ────────────────────────────────
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);   // vertical scroll container
+  const sentinelRef = useRef<HTMLDivElement>(null); // bottom marker the observer watches
+  const loadingLockRef = useRef(false);             // guards against concurrent page loads
+  const genRef = useRef(0);                         // bumps on reset to discard stale in-flight pages
 
   // ── Column visibility state with localStorage persistence ────
   const [visibleColumns, setVisibleColumns] = useState<string[]>(DEFAULT_VISIBLE_KEYS);
@@ -61,21 +75,35 @@ export default function Home() {
     }
   }, []);
 
+  // Fetch a single page under the current filters + ordering.
+  const fetchPage = useCallback(
+    (skip: number) =>
+      fetchAlerts(skip, PAGE_SIZE, sevFilter, statusFilter, envFilter, sort?.key ?? 'created_at', sort?.dir ?? 'desc'),
+    [sevFilter, statusFilter, envFilter, sort]
+  );
+
+  // (Re)load the first page whenever filters or ordering change.
   useEffect(() => {
-    const loadAlerts = async () => {
+    genRef.current += 1;
+    const gen = genRef.current;
+    const loadFirstPage = async () => {
       setIsFetching(true);
-      const data = await fetchAlerts(0, 100, sevFilter, statusFilter, envFilter);
+      const data = await fetchPage(0);
+      if (gen !== genRef.current) return; // a newer reset superseded this one
       setAlerts(data);
+      setHasMore(data.length === PAGE_SIZE);
+      scrollRef.current?.scrollTo({ top: 0 });
       setIsFetching(false);
       setIsInitialLoading(false);
     };
-    loadAlerts();
-  }, [sevFilter, statusFilter, envFilter]);
+    loadFirstPage();
+  }, [fetchPage]);
 
   const handleReset = () => {
     setSevFilter('ALL');
     setEnvFilter('ALL');
     setStatusFilter('ALL');
+    setSort(null);
   };
 
   const handleToggleSelect = useCallback((id: string) => {
@@ -87,9 +115,57 @@ export default function Home() {
   }, []);
 
   const refreshAlerts = useCallback(async () => {
-    const data = await fetchAlerts(0, 100, sevFilter, statusFilter, envFilter);
+    genRef.current += 1;
+    const gen = genRef.current;
+    const data = await fetchPage(0);
+    if (gen !== genRef.current) return;
     setAlerts(data);
-  }, [sevFilter, statusFilter, envFilter]);
+    setHasMore(data.length === PAGE_SIZE);
+  }, [fetchPage]);
+
+  // Append the next page when the sentinel scrolls into view (infinite scroll).
+  const loadMore = useCallback(async () => {
+    if (loadingLockRef.current || isFetching || !hasMore) return;
+    loadingLockRef.current = true;
+    const gen = genRef.current;
+    setIsLoadingMore(true);
+    try {
+      const data = await fetchPage(alerts.length);
+      if (gen !== genRef.current) return; // filters/ordering changed mid-flight
+      setAlerts(prev => [...prev, ...data]);
+      setHasMore(data.length === PAGE_SIZE);
+    } finally {
+      setIsLoadingMore(false);
+      loadingLockRef.current = false;
+    }
+  }, [fetchPage, alerts.length, hasMore, isFetching]);
+
+  // Keep a ref to the latest loadMore so the observer isn't rebuilt per page.
+  const loadMoreRef = useRef(loadMore);
+  useEffect(() => { loadMoreRef.current = loadMore; }, [loadMore]);
+
+  // Observe the sentinel; when it enters the viewport, pull the next page.
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    const root = scrollRef.current;
+    if (!sentinel || !root) return;
+    const observer = new IntersectionObserver(
+      (entries) => { if (entries[0].isIntersecting) loadMoreRef.current(); },
+      { root, rootMargin: '300px' }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [isInitialLoading, hasMore]);
+
+  // Clicking a column cycles asc → desc → off (back to the default time order).
+  // Ordering is applied server-side.
+  const handleSort = useCallback((key: string) => {
+    setSort(prev => {
+      if (!prev || prev.key !== key) return { key, dir: 'asc' };
+      if (prev.dir === 'asc') return { key, dir: 'desc' };
+      return null;
+    });
+  }, []);
 
   const handleAggregate = async () => {
     if (selectedAlertIds.size < 2) return;
@@ -122,7 +198,7 @@ export default function Home() {
     <>
       <main className="flex-1 relative flex flex-col h-full overflow-hidden bg-slate-950">
         <PageHeader title="Alerts Feed" badge="Incoming Stream" />
-        <div className="flex-1 overflow-y-auto p-6">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-6">
           {/* Filters Bar */}
           <div className="flex items-center gap-3 mb-6 p-1">
             <div className="text-xs font-bold text-slate-500 uppercase mr-2"><i className="fas fa-filter mr-1"></i> Filters:</div>
@@ -181,7 +257,29 @@ export default function Home() {
                 visibleColumns={visibleColumns}
                 selectedIds={selectedAlertIds}
                 onToggleSelect={handleToggleSelect}
+                sortBy={sort?.key}
+                sortDir={sort?.dir}
+                defaultSortKey="created_at"
+                defaultSortDir="desc"
+                onSort={handleSort}
               />
+            </div>
+          )}
+
+          {/* Infinite-scroll sentinel — the observer loads the next page when this
+              scrolls into view. Rendered only while more pages remain. */}
+          {!isInitialLoading && hasMore && (
+            <div ref={sentinelRef} className="flex items-center justify-center py-6 text-slate-500">
+              {isLoadingMore && (
+                <span className="flex items-center gap-2 text-xs">
+                  <i className="fas fa-circle-notch fa-spin text-indigo-500"></i> Loading more…
+                </span>
+              )}
+            </div>
+          )}
+          {!isInitialLoading && !hasMore && alerts.length > 0 && (
+            <div className="text-center py-6 text-xs text-slate-600">
+              End of feed · {alerts.length} alert{alerts.length > 1 ? 's' : ''}
             </div>
           )}
         </div>

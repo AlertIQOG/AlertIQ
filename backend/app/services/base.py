@@ -58,6 +58,27 @@ class CRUDBase(Generic[ModelType]):
 
     # ── Read ──────────────────────────────────────────────────────
 
+    def _apply_filters(self, statement: Any, filters: dict[str, Any]) -> Any:
+        """Attach ``WHERE`` clauses for each non-``None`` filter to ``statement``.
+
+        Resolution mirrors ``get_filtered``: a key matching a model column emits
+        ``column = value``; otherwise it probes the model's JSONB field. Shared
+        so subclasses can build custom-ordered queries without duplicating this.
+        """
+        for field, value in filters.items():
+            if value is None:
+                continue
+
+            if field in self._column_names:
+                # Direct column match -> standard WHERE clause
+                statement = statement.where(getattr(self.model, field) == value)
+            elif self._jsonb_field is not None:
+                # Not a column -> probe inside the JSONB field
+                jsonb_col = getattr(self.model, self._jsonb_field)
+                statement = statement.where(jsonb_col[field].astext == str(value))
+
+        return statement
+
     def get(self, session: Session, *, id: Any) -> ModelType | None:
         """Return a single record by primary key, or ``None``."""
         return session.get(self.model, id)
@@ -99,23 +120,7 @@ class CRUDBase(Generic[ModelType]):
         the service layer -- just declare the new ``Query`` parameter in the
         corresponding ``FilterParams`` dependency class.
         """
-        statement = select(self.model)
-
-        for field, value in filters.items():
-            if value is None:
-                continue
-
-            if field in self._column_names:
-                # Direct column match -> standard WHERE clause
-                statement = statement.where(
-                    getattr(self.model, field) == value
-                )
-            elif self._jsonb_field is not None:
-                # Not a column -> probe inside the JSONB field
-                jsonb_col = getattr(self.model, self._jsonb_field)
-                statement = statement.where(
-                    jsonb_col[field].astext == str(value)
-                )
+        statement = self._apply_filters(select(self.model), filters)
 
         if order_by and order_by in self._column_names:
             col = getattr(self.model, order_by)

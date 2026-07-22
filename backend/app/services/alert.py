@@ -3,6 +3,7 @@
 import uuid
 from typing import Any
 
+from sqlalchemy import case
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -26,6 +27,11 @@ class AlertService(CRUDBase[Alert]):
         introspection-based server-side filtering.
     """
 
+    # Semantic ordering ranks for the enum columns. Their stored text would
+    # otherwise sort alphabetically (e.g. Info before Warning) — meaningless for
+    # triage. Sorting these columns orders by these ranks instead.
+    _SEMANTIC_ORDER = {"severity", "status"}
+
     def get_by_source(
         self,
         session: Session,
@@ -40,6 +46,56 @@ class AlertService(CRUDBase[Alert]):
             filters={"source_id": source_id},
             skip=skip,
             limit=limit,
+        )
+
+    def get_filtered(
+        self,
+        session: Session,
+        *,
+        filters: dict[str, Any],
+        skip: int = 0,
+        limit: int = 100,
+        order_by: str | None = None,
+        order_desc: bool = False,
+    ) -> list[Alert]:
+        """Filter alerts, ordering severity/status by meaning, not text.
+
+        For every other column this defers to the generic column ordering in
+        ``CRUDBase.get_filtered``.
+        """
+        if order_by not in self._SEMANTIC_ORDER:
+            return super().get_filtered(
+                session,
+                filters=filters,
+                skip=skip,
+                limit=limit,
+                order_by=order_by,
+                order_desc=order_desc,
+            )
+
+        rank = self._semantic_rank(order_by)
+        statement = self._apply_filters(select(Alert), filters)
+        statement = statement.order_by(rank.desc() if order_desc else rank.asc())
+        statement = statement.offset(skip).limit(limit)
+        return list(session.exec(statement).all())
+
+    @staticmethod
+    def _semantic_rank(column: str) -> Any:
+        """Build the CASE expression that ranks an enum column by triage order."""
+        if column == "severity":
+            return case(
+                (Alert.severity == AlertSeverity.CRITICAL, 4),
+                (Alert.severity == AlertSeverity.ERROR, 3),
+                (Alert.severity == AlertSeverity.WARNING, 2),
+                (Alert.severity == AlertSeverity.INFO, 1),
+                else_=0,
+            )
+        return case(
+            (Alert.status == AlertStatus.OPEN, 1),
+            (Alert.status == AlertStatus.IN_PROGRESS, 2),
+            (Alert.status == AlertStatus.SOLVED, 3),
+            (Alert.status == AlertStatus.DISMISSED, 4),
+            else_=99,
         )
 
     def create(self, session: Session, *, obj_in: Alert) -> Alert:

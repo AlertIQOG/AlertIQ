@@ -10,6 +10,7 @@ export interface Incident {
   createdAt: string;
   source: 'alert' | 'manual';
   linkedAlertId?: string;
+  linkedAlertIds?: string[];
   linkedAlertTitle?: string;
   notes: string;
   affectedServices: string[];

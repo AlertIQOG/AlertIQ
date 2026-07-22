@@ -29,7 +29,10 @@ class Incident(SQLModel, table=True):
     stage: IncidentStage = Field(default=IncidentStage.OPEN)
     assignee: str = Field(default="Unassigned")
     source: str = Field(default="manual")
+    # Primary alert this incident came from (kept for existing links/UI).
     linked_alert_id: uuid.UUID | None = Field(default=None)
+    # Every alert promoted into this incident, including the primary one.
+    linked_alert_ids: list = Field(default_factory=list, sa_column=Column(JSONB))
     notes: str = Field(default="")
     affected_services: list = Field(default_factory=list, sa_column=Column(JSONB))
     created_at: datetime = Field(default_factory=datetime.utcnow)

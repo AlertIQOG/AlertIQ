@@ -76,7 +76,7 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
     setSaving(true);
 
     if (isNew) {
-      await createIncident({
+      const created = await createIncident({
         title: trimmedTitle,
         priority: incident.priority,
         stage: incident.stage,
@@ -85,6 +85,11 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
         notes: incident.notes,
         affectedServices: incident.affectedServices,
       });
+      if (!created.incident) {
+        setTitleError(created.error ?? 'Failed to create incident');
+        setSaving(false);
+        return;
+      }
     } else {
       await updateIncident(id, {
         title: trimmedTitle,

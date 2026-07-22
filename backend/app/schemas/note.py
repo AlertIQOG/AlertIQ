@@ -7,15 +7,11 @@ from pydantic import BaseModel, Field
 
 
 class NoteCreate(BaseModel):
-    """Schema for creating a note."""
+    """Schema for creating a note.
 
-    author: str = Field(
-        ...,
-        min_length=1,
-        max_length=255,
-        description="Note author",
-        examples=["ofir.kaya"],
-    )
+    The author is taken from the authenticated user, never from the client.
+    """
+
     content: str = Field(
         ...,
         min_length=1,

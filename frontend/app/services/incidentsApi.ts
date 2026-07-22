@@ -25,18 +25,27 @@ export async function fetchIncident(id: string): Promise<Incident | null> {
   }
 }
 
-export async function createIncident(body: Omit<Incident, 'id' | 'createdAt' | 'updatedAt'>): Promise<Incident | null> {
+// Returns the created incident, or an error message the caller can display
+// (e.g. the 409 raised when an alert already has an open incident).
+export async function createIncident(
+  body: Omit<Incident, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<{ incident: Incident | null; error?: string }> {
   try {
     const response = await apiFetch('/incidents/', {
       method: 'POST',
       body: JSON.stringify(denormalizeIncident(body)),
     });
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    const data = await response.json();
-    return normalizeIncident(data);
+    if (!response.ok) {
+      const detail = await response.json().catch(() => null);
+      return {
+        incident: null,
+        error: detail?.detail ?? `Failed to create incident (HTTP ${response.status})`,
+      };
+    }
+    return { incident: normalizeIncident(await response.json()) };
   } catch (error) {
     console.error('Error creating incident:', error);
-    return null;
+    return { incident: null, error: 'Could not reach the server.' };
   }
 }
 
@@ -75,6 +84,7 @@ function normalizeIncident(raw: Record<string, unknown>): Incident {
     assignee: raw.assignee as string,
     source: raw.source as Incident['source'],
     linkedAlertId: raw.linked_alert_id as string | undefined,
+    linkedAlertIds: (raw.linked_alert_ids as string[]) ?? [],
     linkedAlertTitle: undefined,
     notes: (raw.notes as string) ?? '',
     affectedServices: (raw.affected_services as string[]) ?? [],
@@ -95,5 +105,6 @@ function denormalizeIncident(incident: Partial<Incident>): Record<string, unknow
   if (incident.notes !== undefined) result.notes = incident.notes;
   if (incident.affectedServices !== undefined) result.affected_services = incident.affectedServices;
   if (incident.linkedAlertId !== undefined) result.linked_alert_id = incident.linkedAlertId;
+  if (incident.linkedAlertIds !== undefined) result.linked_alert_ids = incident.linkedAlertIds;
   return result;
 }

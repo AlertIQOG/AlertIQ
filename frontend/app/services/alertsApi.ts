@@ -17,12 +17,16 @@ export async function fetchAlerts(
   limit: number = 100,
   severity: string = 'ALL',
   status: string = 'ALL',
-  region: string = 'ALL'
+  region: string = 'ALL',
+  sortBy: string = 'created_at',
+  sortDir: string = 'desc'
 ): Promise<Alert[]> {
   try {
     const params = new URLSearchParams({
       skip: skip.toString(),
       limit: limit.toString(),
+      sort_by: sortBy,
+      sort_dir: sortDir,
     });
 
     if (severity !== 'ALL') params.append('severity', severity);
@@ -41,6 +45,19 @@ export async function fetchAlerts(
   } catch (error) {
     console.error('Error fetching alerts from backend:', error);
     return [];
+  }
+}
+
+// Fetched live when the raw-data viewer opens, so the full provider payload
+// isn't carried by every row of the feed.
+export async function fetchAlertRaw(alertId: string): Promise<Record<string, unknown> | null> {
+  try {
+    const response = await apiFetch(`/alerts/${alertId}/raw`);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return await response.json() as Record<string, unknown>;
+  } catch (error) {
+    console.error('Error fetching raw alert data:', error);
+    return null;
   }
 }
 
@@ -131,11 +148,13 @@ export async function fetchAlertNotes(alertId: string): Promise<AlertNote[]> {
   }
 }
 
-export async function addAlertNote(alertId: string, author: string, content: string): Promise<AlertNote | null> {
+// The author is taken from the authenticated user server-side, so it is not
+// sent from here.
+export async function addAlertNote(alertId: string, content: string): Promise<AlertNote | null> {
   try {
     const response = await apiFetch(`/alerts/${alertId}/notes/`, {
       method: 'POST',
-      body: JSON.stringify({ author, content }),
+      body: JSON.stringify({ content }),
     });
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     return await response.json() as AlertNote;
