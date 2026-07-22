@@ -106,7 +106,7 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
             )}
             <span className="truncate min-w-0 max-w-[460px]" title={alert.message}>{alert.message}</span>
           </div>
-          <div className="text-xs text-slate-500 mt-0.5 truncate max-w-[460px]" title={alert.external_id}>ID: {alert.external_id}</div>
+          <div className="text-xs text-slate-500 mt-0.5 truncate max-w-[460px] font-mono" title={alert.id}>ID: {alert.id}</div>
         </>
       )
     },

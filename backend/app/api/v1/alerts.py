@@ -11,6 +11,7 @@ exception handlers registered in ``app.core.exceptions``.
 """
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query, status
 
@@ -96,6 +97,19 @@ def get_alert(*, session: DbSession, alert_id: uuid.UUID) -> AlertRead:
     if not alert:
         raise NotFoundError("Alert", str(alert_id))
     return _with_open_incident(session, [alert])[0]
+
+
+@router.get("/{alert_id}/raw")
+def get_alert_raw(*, session: DbSession, alert_id: uuid.UUID) -> dict[str, Any]:
+    """Return the alert's complete stored record, including ``extra_fields``.
+
+    Fetched on demand by the raw-data viewer so the full provider payload does
+    not have to travel with every row of the feed.
+    """
+    alert = alert_service.get(session, id=alert_id)
+    if not alert:
+        raise NotFoundError("Alert", str(alert_id))
+    return alert.model_dump()
 
 
 @router.get("/{alert_id}/children", response_model=list[AlertRead])

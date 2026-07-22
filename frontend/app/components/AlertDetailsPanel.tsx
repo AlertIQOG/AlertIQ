@@ -6,6 +6,7 @@ import { CopilotSuggestion } from '../types/copilot';
 import { fetchAlertNotes, addAlertNote, updateAlertNote, deleteAlertNote, updateAlertAssignee, fetchCopilotSuggestion, fetchAlertChildren } from '../services/alertsApi';
 import { getStoredUser } from '../services/apiClient';
 import { fetchAllUsers } from '../services/usersApi';
+import AlertRawDataModal from './AlertRawDataModal';
 
 interface AlertDetailsPanelProps {
   alert: Alert;
@@ -26,6 +27,7 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
   const [editText, setEditText] = useState('');
   const [assignee, setAssignee] = useState<string | null>(alert.assignee ?? null);
   const [assigning, setAssigning] = useState(false);
+  const [showRawData, setShowRawData] = useState(false);
 
     // Child alerts grouped under this alert (only for aggregated alerts).
   const [children, setChildren] = useState<Alert[]>([]);
@@ -568,10 +570,21 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
                 <i className="fas fa-arrow-up"></i> Promote
               </button>
             )}
+
+            <button
+              onClick={() => setShowRawData(true)}
+              className="w-full mt-2 bg-slate-900 border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white py-2.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2"
+            >
+              <i className="fas fa-code text-xs"></i> View raw data
+            </button>
           </div>
 
         </div>
       </div>
+
+      {showRawData && (
+        <AlertRawDataModal alert={alert} onClose={() => setShowRawData(false)} />
+      )}
     </>
   );
 }
