@@ -9,10 +9,12 @@ import hashlib
 import uuid
 from dataclasses import dataclass, field
 
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.models.alert import Alert
 from app.models.copilot_suggestion import CopilotSuggestion
+from app.models.rag_chunk import RagChunk
 from app.services.rag.generation import (
     SYSTEM_PROMPT,
     build_user_prompt,
@@ -110,9 +112,31 @@ def generate_suggestion(
 # ── Caching ───────────────────────────────────────────────────────────
 
 
-def _content_hash(alert: Alert) -> str:
-    """Hash of the alert's queryable content — the cache invalidation key."""
-    return hashlib.sha256(build_query_text(alert).encode("utf-8")).hexdigest()
+def _corpus_fingerprint(session: Session) -> str:
+    """A cheap fingerprint of the RAG corpus state.
+
+    Returns ``"<count>:<latest updated_at>"`` over ``rag_chunks``. Re-indexing a
+    record updates its chunk in place (bumping ``updated_at``) and new records
+    add rows, so this value changes exactly when the searchable corpus changes —
+    and is stable when it does not. Folding it into the cache key lets a note or
+    precedent edit lazily invalidate suggestions that were grounded on the old
+    corpus, without any embedding/LLM cost on a cache hit.
+    """
+    count, latest = session.exec(
+        select(func.count(RagChunk.id), func.max(RagChunk.updated_at))
+    ).one()
+    return f"{count}:{latest.isoformat() if latest else '0'}"
+
+
+def _content_hash(session: Session, alert: Alert) -> str:
+    """Cache invalidation key: the alert's queryable content + corpus state.
+
+    Combines the query text (so an edit to the alert's own message/labels busts
+    the cache) with the corpus fingerprint (so an edit to a precedent or its
+    notes busts it too).
+    """
+    basis = f"{build_query_text(alert)}|corpus={_corpus_fingerprint(session)}"
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()
 
 
 def _to_payload(result: CopilotResult) -> dict:
@@ -168,7 +192,7 @@ def get_or_generate_suggestion(
     Serves a cached suggestion when its content hash and provider match and
     ``force`` is false; otherwise (re)generates and upserts the cache row.
     """
-    content_hash = _content_hash(alert)
+    content_hash = _content_hash(session, alert)
     provider = generation_service.provider
 
     cached = session.exec(

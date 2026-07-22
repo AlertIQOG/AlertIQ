@@ -3,7 +3,7 @@
 import uuid
 
 import pytest
-from sqlmodel import Session, delete
+from sqlmodel import Session, delete, select
 
 from app.core.config import settings
 from app.core.database import engine
@@ -117,3 +117,28 @@ def test_content_change_invalidates_cache(seeded):
         _, cached = get_or_generate_suggestion(s, alert, floor=0.5)
         assert cached is False
         assert calls["n"] == 2
+
+
+def test_precedent_change_invalidates_cache(seeded):
+    """Editing a precedent (e.g. a note re-index) busts the query alert's cache
+    via the corpus fingerprint, even though the query alert itself is unchanged.
+    """
+    alert_id, precedent_id, calls = seeded
+    with Session(engine) as s:
+        alert = s.get(Alert, alert_id)
+        get_or_generate_suggestion(s, alert, floor=0.5)
+        assert calls["n"] == 1
+
+        # Re-index a precedent chunk (what safe_index_alert does on a note edit):
+        # content changes → updated_at bumps → corpus fingerprint changes.
+        chunk = s.exec(
+            select(RagChunk).where(RagChunk.source_id == precedent_id)
+        ).first()
+        chunk.content = "[ALERT] Message: Disk full\nResolution notes:\n- Cleared WAL"
+        chunk.content_hash = "p2"
+        s.add(chunk)
+        s.commit()
+
+        _, cached = get_or_generate_suggestion(s, alert, floor=0.5)
+        assert cached is False               # corpus changed → cache miss
+        assert calls["n"] == 2               # regenerated
