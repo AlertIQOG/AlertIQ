@@ -4,6 +4,7 @@ AlertIQ application factory.
 Creates, configures, and returns the FastAPI application instance.
 """
 
+import asyncio
 import time
 from contextlib import asynccontextmanager
 
@@ -14,6 +15,7 @@ from app.api.v1.router import router as api_v1_router
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import logger, setup_logging
+from app.services.events import event_bus
 
 setup_logging(debug=settings.DEBUG)
 
@@ -22,7 +24,11 @@ setup_logging(debug=settings.DEBUG)
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle hook."""
     logger.info("%s v%s starting up...", settings.APP_NAME, settings.APP_VERSION)
+    # Let sync service code (running in worker threads) publish SSE events
+    # onto this loop. Unbound (e.g. in scripts/tests) publishing is a no-op.
+    event_bus.bind_loop(asyncio.get_running_loop())
     yield
+    event_bus.unbind_loop()
     logger.info("%s shutting down.", settings.APP_NAME)
 
 

@@ -5,6 +5,7 @@ from app.api.v1 import (
     alerts,
     auth,
     correlation_rule,
+    events,
     health,
     incidents,
     ingest,
@@ -37,6 +38,9 @@ router.include_router(
     dependencies=protected,
 )
 router.include_router(ingest.router, prefix="/ingest", tags=["Ingest"])
+router.include_router(
+    events.router, prefix="/events", tags=["Events"], dependencies=protected
+)
 router.include_router(
     incidents.router, prefix="/incidents", tags=["Incidents"], dependencies=protected
 )

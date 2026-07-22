@@ -10,6 +10,7 @@ import AlertDetailsPanel from './components/AlertDetailsPanel';
 import PromoteToIncidentModal from './components/PromoteToIncidentModal';
 import PageHeader from './components/PageHeader';
 import { DEFAULT_VISIBLE_KEYS, STORAGE_KEY } from './data/columnConfig';
+import { useLiveEvents } from './hooks/useLiveEvents';
 
 export default function Home() {
   const router = useRouter();
@@ -90,6 +91,10 @@ export default function Home() {
     const data = await fetchAlerts(0, 100, sevFilter, statusFilter, envFilter);
     setAlerts(data);
   }, [sevFilter, statusFilter, envFilter]);
+
+  // Live updates: refetch (without the loading overlay) whenever an alert,
+  // aggregate, or note changes on the server.
+  useLiveEvents(['alert.', 'aggregate.', 'note.'], refreshAlerts);
 
   const handleAggregate = async () => {
     if (selectedAlertIds.size < 2) return;
