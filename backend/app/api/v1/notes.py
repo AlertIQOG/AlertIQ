@@ -4,7 +4,12 @@ import uuid
 
 from fastapi import APIRouter, Depends, status
 
-from app.api.v1.dependencies import DbSession, PaginationParams, ValidAlertId
+from app.api.v1.dependencies import (
+    CurrentUser,
+    DbSession,
+    PaginationParams,
+    ValidAlertId,
+)
 from app.core.exceptions import NotFoundError
 from app.schemas.note import NoteCreate, NoteRead, NoteUpdate
 from app.services.note import note_service
@@ -34,12 +39,14 @@ def create_note(
     session: DbSession,
     alert_id: ValidAlertId,
     body: NoteCreate,
+    current_user: CurrentUser,
 ) -> NoteRead:
-    """Add a new operational note to an alert."""
+    """Add a new operational note, authored by the authenticated user."""
     return note_service.create_for_alert(
         session,
         alert_id=alert_id,
         obj_in=body,
+        author=current_user.username,
     )
 
 
@@ -50,13 +57,15 @@ def update_note(
     alert_id: ValidAlertId,
     note_id: uuid.UUID,
     body: NoteUpdate,
+    current_user: CurrentUser,
 ) -> NoteRead:
-    """Edit an existing note's content."""
+    """Edit an existing note's content. Only its author may edit it."""
     note = note_service.update_for_alert(
         session,
         alert_id=alert_id,
         note_id=note_id,
         obj_in=body,
+        author=current_user.username,
     )
     if note is None:
         raise NotFoundError("Note", str(note_id))
@@ -69,12 +78,14 @@ def delete_note(
     session: DbSession,
     alert_id: ValidAlertId,
     note_id: uuid.UUID,
+    current_user: CurrentUser,
 ) -> None:
-    """Permanently delete a note from an alert."""
+    """Permanently delete a note. Only its author may delete it."""
     note = note_service.delete_for_alert(
         session,
         alert_id=alert_id,
         note_id=note_id,
+        author=current_user.username,
     )
     if note is None:
         raise NotFoundError("Note", str(note_id))

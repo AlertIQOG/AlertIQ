@@ -20,6 +20,7 @@ interface AlertDetailsPanelProps {
 export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAlertUpdate, onPromote, onSelectAlert, parentLabel }: AlertDetailsPanelProps) {
   const [noteText, setNoteText] = useState('');
   const [notes, setNotes] = useState<AlertNote[]>([]);
+  const [notesLoading, setNotesLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
@@ -69,8 +70,12 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
   useEffect(() => {
     let cancelled = false;
     const loadNotes = async () => {
+      setNotesLoading(true);
       const data = await fetchAlertNotes(alert.id);
-      if (!cancelled) setNotes(data);
+      if (!cancelled) {
+        setNotes(data);
+        setNotesLoading(false);
+      }
     };
     loadNotes();
     return () => {
@@ -171,8 +176,7 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
     const trimmed = noteText.trim();
     if (!trimmed) return;
     setSaving(true);
-    const author = currentUsername ?? 'unknown';
-    const created = await addAlertNote(alert.id, author, trimmed);
+    const created = await addAlertNote(alert.id, trimmed);
     if (created) setNotes((prev) => [...prev, created]);
     setNoteText('');
     setSaving(false);
@@ -196,7 +200,8 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
     if (ok) setNotes((prev) => prev.filter((n) => n.id !== id));
   };
 
-  const reversedNotes = [...notes].reverse();
+  // Chat order: oldest first, newest at the bottom.
+  const isMine = (note: AlertNote) => note.author === currentUsername;
 
  // Create a unique list of assignee options from systemUsers and currentUsername, filtering out any null or undefined values
   // Add currentUsername to the list to ensure the current user is always an option, even if not in systemUsers
@@ -350,62 +355,98 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
               </button>
             </div>
 
-            {/* Notes history */}
-            {reversedNotes.length > 0 && (
-              <div className="mt-3 space-y-2">
-                {reversedNotes.map((note) => (
-                  <div key={note.id} className="bg-slate-900/60 border border-slate-800 rounded-lg px-3 py-2 group">
-                    {editingId === note.id ? (
-                      <div>
-                        <textarea
-                          value={editText}
-                          onChange={(e) => setEditText(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-700 rounded text-sm text-slate-300 outline-none resize-none p-2 mb-2"
-                          rows={3}
-                          autoFocus
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleSaveEdit(note.id)}
-                            disabled={!editText.trim()}
-                            className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs py-1.5 rounded font-medium transition"
-                          >
-                            Save
-                          </button>
-                          <button
-                            onClick={() => setEditingId(null)}
-                            className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-1.5 rounded font-medium transition"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm text-slate-300 whitespace-pre-wrap flex-1">{note.content}</p>
-                          <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition shrink-0 mt-0.5">
-                            <button
-                              onClick={() => handleStartEdit(note.id, note.content)}
-                              className="text-slate-500 hover:text-slate-300 transition"
-                              title="Edit"
-                            >
-                              <i className="fas fa-pencil text-[11px]"></i>
-                            </button>
-                            <button
-                              onClick={() => handleDelete(note.id)}
-                              className="text-slate-500 hover:text-red-400 transition"
-                              title="Delete"
-                            >
-                              <i className="fas fa-trash text-[11px]"></i>
-                            </button>
+            {/* Notes thread — mine on the right, everyone else's on the left */}
+            {notesLoading ? (
+              <p className="mt-3 text-xs text-slate-500 text-center py-3 flex items-center justify-center gap-2">
+                <i className="fas fa-circle-notch fa-spin text-indigo-500"></i> Loading notes…
+              </p>
+            ) : notes.length === 0 ? (
+              <p className="mt-3 text-xs text-slate-600 text-center py-3">
+                No notes yet — be the first to add one.
+              </p>
+            ) : (
+              <div className="mt-3 space-y-3">
+                {notes.map((note) => {
+                  const mine = isMine(note);
+                  return (
+                    <div key={note.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[85%] group ${mine ? 'items-end' : 'items-start'} flex flex-col`}>
+
+                        {/* Author — only for other people's notes */}
+                        {!mine && (
+                          <div className="flex items-center gap-1.5 mb-1 px-1">
+                            <span className="w-4 h-4 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-[8px] font-bold text-white">
+                              {note.author.slice(0, 2).toUpperCase()}
+                            </span>
+                            <span className="text-[10px] font-semibold text-slate-400">{note.author}</span>
                           </div>
-                        </div>
-                        <span className="text-[10px] text-slate-500 mt-1 block">{formatNoteTime(note.created_at)}</span>
-                      </>
-                    )}
-                  </div>
-                ))}
+                        )}
+
+                        {editingId === note.id ? (
+                          <div className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2">
+                            <textarea
+                              value={editText}
+                              onChange={(e) => setEditText(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-700 rounded text-sm text-slate-300 outline-none resize-none p-2 mb-2"
+                              rows={3}
+                              autoFocus
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleSaveEdit(note.id)}
+                                disabled={!editText.trim()}
+                                className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs py-1.5 rounded font-medium transition"
+                              >
+                                Save
+                              </button>
+                              <button
+                                onClick={() => setEditingId(null)}
+                                className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-1.5 rounded font-medium transition"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div
+                            className={`rounded-2xl px-3 py-2 ${
+                              mine
+                                ? 'bg-indigo-600 text-white rounded-br-sm'
+                                : 'bg-slate-800 text-slate-200 rounded-bl-sm'
+                            }`}
+                          >
+                            <p className="text-sm whitespace-pre-wrap break-words">{note.content}</p>
+                          </div>
+                        )}
+
+                        {/* Timestamp + actions (author only) */}
+                        {editingId !== note.id && (
+                          <div className={`flex items-center gap-2 mt-1 px-1 ${mine ? 'flex-row-reverse' : ''}`}>
+                            <span className="text-[10px] text-slate-500">{formatNoteTime(note.created_at)}</span>
+                            {mine && (
+                              <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition">
+                                <button
+                                  onClick={() => handleStartEdit(note.id, note.content)}
+                                  className="text-slate-500 hover:text-slate-300 transition"
+                                  title="Edit"
+                                >
+                                  <i className="fas fa-pencil text-[10px]"></i>
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(note.id)}
+                                  className="text-slate-500 hover:text-red-400 transition"
+                                  title="Delete"
+                                >
+                                  <i className="fas fa-trash text-[10px]"></i>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

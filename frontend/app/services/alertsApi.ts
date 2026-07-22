@@ -135,11 +135,13 @@ export async function fetchAlertNotes(alertId: string): Promise<AlertNote[]> {
   }
 }
 
-export async function addAlertNote(alertId: string, author: string, content: string): Promise<AlertNote | null> {
+// The author is taken from the authenticated user server-side, so it is not
+// sent from here.
+export async function addAlertNote(alertId: string, content: string): Promise<AlertNote | null> {
   try {
     const response = await apiFetch(`/alerts/${alertId}/notes/`, {
       method: 'POST',
-      body: JSON.stringify({ author, content }),
+      body: JSON.stringify({ content }),
     });
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     return await response.json() as AlertNote;

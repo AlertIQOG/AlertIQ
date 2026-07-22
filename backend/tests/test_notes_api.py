@@ -6,12 +6,15 @@ behaviours that matter for the Resolution Copilot:
   * a Solved parent alert is re-indexed on every note mutation, so the RAG
     chunk stays in sync with its resolution notes;
   * a note can only be edited/deleted through its own parent alert (no
-    cross-alert access via a spoofed URL).
+    cross-alert access via a spoofed URL);
+  * a note can only be edited/deleted by the user who wrote it, and its
+    author is taken from the token rather than the request body.
 
 The embedding step is stubbed, so this needs no Voyage key or pgvector.
 """
 
 import uuid
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -33,8 +36,9 @@ def seeded(monkeypatch):
     monkeypatch.setattr(
         note_module, "safe_index_alert", lambda session, alert: calls.append(alert.id)
     )
-    # The notes router sits behind bearer auth; bypass it for the test.
-    app.dependency_overrides[get_current_user] = lambda: None
+    # Stub the bearer auth; reassign username to act as somebody else.
+    session_user = SimpleNamespace(username="ops")
+    app.dependency_overrides[get_current_user] = lambda: session_user
 
     source_id = uuid.uuid4()
     solved_id = uuid.uuid4()
@@ -58,7 +62,7 @@ def seeded(monkeypatch):
         )
         s.commit()
 
-    yield solved_id, other_id, calls
+    yield solved_id, other_id, calls, session_user
 
     app.dependency_overrides.clear()
     with Session(engine) as s:
@@ -69,12 +73,12 @@ def seeded(monkeypatch):
 
 
 def test_note_lifecycle_reindexes_solved_alert(seeded):
-    solved_id, _other_id, calls = seeded
+    solved_id, _other_id, calls, _user = seeded
     client = TestClient(app)
     base = f"/api/v1/alerts/{solved_id}/notes/"
 
     # Create
-    resp = client.post(base, json={"author": "ops", "content": "Cleared WAL logs"})
+    resp = client.post(base, json={"content": "Cleared WAL logs"})
     assert resp.status_code == 201
     note = resp.json()
     assert note["author"] == "ops"
@@ -99,7 +103,7 @@ def test_note_lifecycle_reindexes_solved_alert(seeded):
 
 
 def test_note_edit_delete_unknown_returns_404(seeded):
-    solved_id, _other_id, _calls = seeded
+    solved_id, _other_id, _calls, _user = seeded
     client = TestClient(app)
     base = f"/api/v1/alerts/{solved_id}/notes/"
     ghost = uuid.uuid4()
@@ -109,12 +113,12 @@ def test_note_edit_delete_unknown_returns_404(seeded):
 
 
 def test_note_cannot_be_touched_via_wrong_alert(seeded):
-    solved_id, other_id, _calls = seeded
+    solved_id, other_id, _calls, _user = seeded
     client = TestClient(app)
 
     created = client.post(
         f"/api/v1/alerts/{solved_id}/notes/",
-        json={"author": "ops", "content": "belongs to solved"},
+        json={"content": "belongs to solved"},
     ).json()
     note_id = created["id"]
 
@@ -126,3 +130,33 @@ def test_note_cannot_be_touched_via_wrong_alert(seeded):
     # The note is untouched under its real parent.
     still = client.get(f"/api/v1/alerts/{solved_id}/notes/").json()
     assert [n["content"] for n in still] == ["belongs to solved"]
+
+
+def test_author_comes_from_token_not_body(seeded):
+    solved_id, _other_id, _calls, _user = seeded
+    client = TestClient(app)
+
+    created = client.post(
+        f"/api/v1/alerts/{solved_id}/notes/",
+        json={"author": "somebody-else", "content": "x"},
+    ).json()
+    assert created["author"] == "ops"
+
+
+def test_only_the_author_can_edit_or_delete(seeded):
+    solved_id, _other_id, _calls, session_user = seeded
+    client = TestClient(app)
+    base = f"/api/v1/alerts/{solved_id}/notes/"
+
+    note_id = client.post(base, json={"content": "ops wrote this"}).json()["id"]
+
+    # Someone else is refused.
+    session_user.username = "intruder"
+    assert client.patch(f"{base}{note_id}", json={"content": "hijack"}).status_code == 403
+    assert client.delete(f"{base}{note_id}").status_code == 403
+    assert [n["content"] for n in client.get(base).json()] == ["ops wrote this"]
+
+    # The author still can.
+    session_user.username = "ops"
+    assert client.patch(f"{base}{note_id}", json={"content": "edited"}).status_code == 200
+    assert client.delete(f"{base}{note_id}").status_code == 204

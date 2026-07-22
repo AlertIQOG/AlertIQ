@@ -4,6 +4,7 @@ import uuid
 
 from sqlmodel import Session
 
+from app.core.exceptions import AuthorizationError
 from app.models.alert import Alert, AlertStatus
 from app.models.note import Note
 from app.schemas.note import NoteCreate, NoteUpdate
@@ -37,15 +38,19 @@ class NoteService(CRUDBase[Note]):
         *,
         alert_id: uuid.UUID,
         obj_in: NoteCreate,
+        author: str,
     ) -> Note:
         """Create a new note attached to the given alert.
+
+        ``author`` is supplied by the caller from the authenticated user, so a
+        client cannot post a note under someone else's name.
 
         If the parent alert is already Solved, its embedded chunk includes the
         resolution notes, so re-index it (best-effort) to pick up the new note.
         """
         db_obj = Note(
             alert_id=alert_id,
-            author=obj_in.author,
+            author=author,
             content=obj_in.content,
         )
         note = self.create(session, obj_in=db_obj)
@@ -59,15 +64,18 @@ class NoteService(CRUDBase[Note]):
         alert_id: uuid.UUID,
         note_id: uuid.UUID,
         obj_in: NoteUpdate,
+        author: str,
     ) -> Note | None:
         """Edit a note's content, re-indexing the parent alert if Solved.
 
         Returns ``None`` if the note does not exist or belongs to a different
         alert (guards against editing another alert's note via a spoofed URL).
+        Raises ``AuthorizationError`` if ``author`` is not the note's author.
         """
         note = self.get(session, id=note_id)
         if note is None or note.alert_id != alert_id:
             return None
+        self._assert_author(note, author)
 
         updated = self.update(
             session, db_obj=note, update_data={"content": obj_in.content}
@@ -81,19 +89,28 @@ class NoteService(CRUDBase[Note]):
         *,
         alert_id: uuid.UUID,
         note_id: uuid.UUID,
+        author: str,
     ) -> Note | None:
         """Delete a note, re-indexing the parent alert if Solved.
 
         Returns ``None`` if the note does not exist or belongs to a different
-        alert.
+        alert. Raises ``AuthorizationError`` if ``author`` is not the note's
+        author.
         """
         note = self.get(session, id=note_id)
         if note is None or note.alert_id != alert_id:
             return None
+        self._assert_author(note, author)
 
         removed = self.remove(session, id=note_id)
         self._reindex_if_solved(session, alert_id)
         return removed
+
+    @staticmethod
+    def _assert_author(note: Note, author: str) -> None:
+        """Reject any mutation attempted by someone other than the note's author."""
+        if note.author != author:
+            raise AuthorizationError("Only the note's author can edit or delete it")
 
     def _reindex_if_solved(self, session: Session, alert_id: uuid.UUID) -> None:
         """Re-embed the parent alert (best-effort) when it is already Solved.
