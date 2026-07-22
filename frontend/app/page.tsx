@@ -10,6 +10,7 @@ import AlertDetailsPanel from './components/AlertDetailsPanel';
 import PromoteToIncidentModal from './components/PromoteToIncidentModal';
 import PageHeader from './components/PageHeader';
 import { DEFAULT_VISIBLE_KEYS, STORAGE_KEY } from './data/columnConfig';
+import { useLiveEvents } from './hooks/useLiveEvents';
 
 // Rows fetched per page. Infinite scroll appends a page at a time and stops
 // once the backend returns a short page (fewer than PAGE_SIZE rows).
@@ -166,6 +167,10 @@ export default function Home() {
       return null;
     });
   }, []);
+
+  // Live updates: refetch (without the loading overlay) whenever an alert,
+  // aggregate, or note changes on the server.
+  useLiveEvents(['alert.', 'aggregate.', 'note.'], refreshAlerts);
 
   const handleAggregate = async () => {
     if (selectedAlertIds.size < 2) return;

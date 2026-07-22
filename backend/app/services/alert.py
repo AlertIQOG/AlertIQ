@@ -11,6 +11,7 @@ from app.core.exceptions import ConflictError
 from app.models.alert import Alert, AlertSeverity, AlertStatus
 from app.schemas.alert import AlertCreate
 from app.services.base import CRUDBase
+from app.services.events import event_bus
 from app.services.rag.indexer import safe_index_alert
 
 
@@ -109,6 +110,7 @@ class AlertService(CRUDBase[Alert]):
         try:
             session.commit()
             session.refresh(obj_in)
+            event_bus.publish("alert.created", obj_in.id)
             return obj_in
         except IntegrityError:
             session.rollback()
@@ -149,6 +151,7 @@ class AlertService(CRUDBase[Alert]):
             session.refresh(existing)
             if existing.status == AlertStatus.SOLVED:
                 safe_index_alert(session, existing)
+            event_bus.publish("alert.updated", existing.id)
             return existing, False
 
         alert = Alert.model_validate(obj_in.model_dump())
@@ -157,6 +160,7 @@ class AlertService(CRUDBase[Alert]):
         session.refresh(alert)
         if alert.status == AlertStatus.SOLVED:
             safe_index_alert(session, alert)
+        event_bus.publish("alert.created", alert.id)
         return alert, True
 
     def update(
@@ -166,7 +170,15 @@ class AlertService(CRUDBase[Alert]):
         updated = super().update(session, db_obj=db_obj, update_data=update_data)
         if updated.status == AlertStatus.SOLVED:
             safe_index_alert(session, updated)
+        event_bus.publish("alert.updated", updated.id)
         return updated
+
+    def remove(self, session: Session, *, id: uuid.UUID) -> Alert | None:
+        """Delete an alert, notifying live subscribers on success."""
+        removed = super().remove(session, id=id)
+        if removed is not None:
+            event_bus.publish("alert.deleted", id)
+        return removed
 
 
     def aggregate(
@@ -222,6 +234,7 @@ class AlertService(CRUDBase[Alert]):
 
         session.commit()
         session.refresh(aggregated)
+        event_bus.publish("alert.created", aggregated.id)
         return aggregated
 
 

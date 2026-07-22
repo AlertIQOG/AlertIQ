@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import DataTable, { ColumnDef } from '../components/DataTable';
@@ -8,6 +8,7 @@ import { mockIncidents } from '../data/mockIncidents';
 import { deleteIncident, fetchIncidents, updateIncident } from '../services/incidentsApi';
 import type { Incident, IncidentPriority, IncidentStage } from '../types/incident';
 import { fetchAllUsers } from '../services/usersApi';
+import { useLiveEvents } from '../hooks/useLiveEvents';
 
 const PRIORITY_STYLES: Record<IncidentPriority, string> = {
   P1: 'bg-red-500 text-white',
@@ -69,6 +70,15 @@ export default function IncidentsPage() {
       setLoading(false);
     });
   }, []);
+
+  // Live updates: refetch when incidents change on the server. Keeps the
+  // mock fallback out of the live path so a transient empty result doesn't
+  // replace real data with mocks.
+  const refreshIncidents = useCallback(async () => {
+    const data = await fetchIncidents();
+    if (data.length > 0) setIncidents(data);
+  }, []);
+  useLiveEvents(['incident.'], refreshIncidents);
 
   const filtered = incidents.filter(inc =>
     inc.title.toLowerCase().includes(search.toLowerCase()) ||

@@ -9,6 +9,7 @@ from app.models.alert import Alert, AlertStatus
 from app.models.note import Note
 from app.schemas.note import NoteCreate, NoteUpdate
 from app.services.base import CRUDBase
+from app.services.events import event_bus
 from app.services.rag.indexer import safe_index_alert
 
 
@@ -55,6 +56,8 @@ class NoteService(CRUDBase[Note]):
         )
         note = self.create(session, obj_in=db_obj)
         self._reindex_if_solved(session, alert_id)
+        # Notes render inside the alert details panel, so signal the alert.
+        event_bus.publish("note.created", alert_id)
         return note
 
     def update_for_alert(
@@ -81,6 +84,7 @@ class NoteService(CRUDBase[Note]):
             session, db_obj=note, update_data={"content": obj_in.content}
         )
         self._reindex_if_solved(session, alert_id)
+        event_bus.publish("note.updated", alert_id)
         return updated
 
     def delete_for_alert(
@@ -104,6 +108,7 @@ class NoteService(CRUDBase[Note]):
 
         removed = self.remove(session, id=note_id)
         self._reindex_if_solved(session, alert_id)
+        event_bus.publish("note.deleted", alert_id)
         return removed
 
     @staticmethod

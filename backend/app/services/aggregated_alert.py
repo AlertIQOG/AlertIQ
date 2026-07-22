@@ -19,6 +19,7 @@ from app.models.alert import Alert
 from app.models.correlation_rule import CorrelationRule
 from app.services.base import CRUDBase
 from app.services.correlation_engine import apply_member, build_aggregate
+from app.services.events import event_bus
 
 
 class AggregatedAlertService(CRUDBase[AggregatedAlert]):
@@ -72,6 +73,7 @@ class AggregatedAlertService(CRUDBase[AggregatedAlert]):
         session.add(aggregate)
         session.commit()
         session.refresh(aggregate)
+        event_bus.publish("aggregate.created", aggregate.id)
         return aggregate
 
     def add_member(
@@ -92,6 +94,7 @@ class AggregatedAlertService(CRUDBase[AggregatedAlert]):
         session.add(aggregate)
         session.commit()
         session.refresh(aggregate)
+        event_bus.publish("aggregate.updated", aggregate.id)
         return aggregate
 
     def close(
@@ -107,6 +110,7 @@ class AggregatedAlertService(CRUDBase[AggregatedAlert]):
         session.add(aggregate)
         session.commit()
         session.refresh(aggregate)
+        event_bus.publish("aggregate.updated", aggregate.id)
         return aggregate
 
 
