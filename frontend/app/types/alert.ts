@@ -28,4 +28,6 @@ export interface Alert {
   updated_at?: string;
   isAggregated?: boolean;
   childCount?: number;
+  // Set when an unresolved incident is already linked to this alert.
+  open_incident_id?: string | null;
 }

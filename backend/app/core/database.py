@@ -37,6 +37,19 @@ with engine.begin() as conn:
             "ADD COLUMN IF NOT EXISTS email_recipients jsonb NOT NULL DEFAULT '[]'::jsonb"
         )
     )
+    conn.execute(
+        text(
+            "ALTER TABLE incidents "
+            "ADD COLUMN IF NOT EXISTS linked_alert_ids jsonb NOT NULL DEFAULT '[]'::jsonb"
+        )
+    )
+    # Backfill pre-existing incidents so their single link shows up in the list.
+    conn.execute(
+        text(
+            "UPDATE incidents SET linked_alert_ids = jsonb_build_array(linked_alert_id::text) "
+            "WHERE linked_alert_ids = '[]'::jsonb AND linked_alert_id IS NOT NULL"
+        )
+    )
 
 
 def get_session() -> Generator[Session, None, None]:

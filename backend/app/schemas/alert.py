@@ -93,3 +93,6 @@ class AlertRead(BaseModel):
     extra_fields: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    # Set when an unresolved incident is linked to this alert, so the UI can
+    # flag it and block a duplicate. Populated by the alerts endpoints.
+    open_incident_id: uuid.UUID | None = None

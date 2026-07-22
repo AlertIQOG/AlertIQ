@@ -31,10 +31,24 @@ from app.schemas.rag import (
     SimilarResponse,
 )
 from app.services.alert import alert_service
+from app.services.incident import incident_service
 from app.services.rag.copilot import get_or_generate_suggestion
 from app.services.rag.retriever import find_similar_for_alert
 
 router = APIRouter()
+
+
+def _with_open_incident(session: DbSession, alerts: list[Alert]) -> list[AlertRead]:
+    """Attach each alert's unresolved incident id, if it has one."""
+    if not alerts:
+        return []
+    open_by_alert = incident_service.open_incident_by_alert(session)
+    return [
+        AlertRead.model_validate(alert).model_copy(
+            update={"open_incident_id": open_by_alert.get(alert.id)}
+        )
+        for alert in alerts
+    ]
 
 
 @router.post("/", response_model=AlertRead, status_code=status.HTTP_201_CREATED)
@@ -60,7 +74,7 @@ def list_alerts(
     Ordering defaults to newest-first (``created_at`` descending).
     Pagination (``skip``/``limit``) is applied **after** filtering and ordering.
     """
-    return alert_service.get_filtered(
+    alerts = alert_service.get_filtered(
         session,
         filters=filters.to_dict(),
         skip=pagination.skip,
@@ -68,6 +82,7 @@ def list_alerts(
         order_by=sort.sort_by,
         order_desc=sort.order_desc,
     )
+    return _with_open_incident(session, alerts)
 @router.post("/aggregate", response_model=AlertRead, status_code=status.HTTP_201_CREATED)
 def aggregate_alerts(*, session: DbSession, body: AggregateRequest) -> AlertRead:
     """Group multiple alerts into one aggregated alert and dismiss the originals."""
@@ -80,7 +95,7 @@ def get_alert(*, session: DbSession, alert_id: uuid.UUID) -> AlertRead:
     alert = alert_service.get(session, id=alert_id)
     if not alert:
         raise NotFoundError("Alert", str(alert_id))
-    return alert
+    return _with_open_incident(session, [alert])[0]
 
 
 @router.get("/{alert_id}/children", response_model=list[AlertRead])

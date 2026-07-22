@@ -15,6 +15,7 @@ class IncidentCreate(BaseModel):
     assignee: str = "Unassigned"
     source: str = "manual"
     linked_alert_id: uuid.UUID | None = None
+    linked_alert_ids: list[uuid.UUID] = Field(default_factory=list)
     notes: str = ""
     affected_services: list[str] = Field(default_factory=list)
 
@@ -39,6 +40,7 @@ class IncidentRead(BaseModel):
     assignee: str
     source: str
     linked_alert_id: uuid.UUID | None
+    linked_alert_ids: list[uuid.UUID] = Field(default_factory=list)
     notes: str
     affected_services: list[str]
     created_at: datetime

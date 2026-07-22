@@ -48,6 +48,11 @@ export default function PromoteToIncidentModal({ alerts, onClose, onSuccess }: P
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [systemUsers, setSystemUsers] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  // Alerts that already have an unresolved incident can't be promoted again.
+  const blocked = alerts.filter(a => a.open_incident_id);
+  const allBlocked = blocked.length === alerts.length;
 
   // Get the list of system users when the component mounts
   useEffect(() => {
@@ -64,8 +69,9 @@ export default function PromoteToIncidentModal({ alerts, onClose, onSuccess }: P
   }, []);
 
   const handleSubmit = async () => {
-    if (!title.trim()) return;
+    if (!title.trim() || blocked.length > 0) return;
     setSaving(true);
+    setError(null);
 
     const autoNotes = alerts.length > 1
       ? `Promoted from ${alerts.length} alerts:\n` + alerts.map(a => `• ${a.message}`).join('\n')
@@ -78,13 +84,15 @@ export default function PromoteToIncidentModal({ alerts, onClose, onSuccess }: P
       assignee,
       source: 'alert',
       linkedAlertId: alerts[0].id,
+      linkedAlertIds: alerts.map(a => a.id),
       linkedAlertTitle: alerts[0].message,
       notes: notes && autoNotes ? `${notes}\n\n${autoNotes}` : notes || autoNotes,
       affectedServices: [...new Set(alerts.flatMap(a => a.application ? [a.application] : []))],
     });
 
     setSaving(false);
-    if (result) onSuccess();
+    if (result.incident) onSuccess();
+    else setError(result.error ?? 'Failed to create incident.');
   };
 
   return (
@@ -108,6 +116,32 @@ export default function PromoteToIncidentModal({ alerts, onClose, onSuccess }: P
         </div>
 
         <div className="px-6 py-5 space-y-4">
+          {blocked.length > 0 && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 flex gap-2.5">
+              <i className="fas fa-triangle-exclamation text-red-400 mt-0.5"></i>
+              <div className="text-xs text-red-300">
+                <p className="font-bold mb-1">
+                  {allBlocked
+                    ? alerts.length === 1
+                      ? 'This alert already has an open incident.'
+                      : 'All selected alerts already have an open incident.'
+                    : `${blocked.length} of ${alerts.length} selected alerts already have an open incident.`}
+                </p>
+                <p className="text-red-400/80">
+                  Resolve the existing incident first, or deselect{' '}
+                  {allBlocked ? 'it' : 'those alerts'} — a duplicate can&apos;t be created.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-xs text-red-300 flex gap-2.5">
+              <i className="fas fa-circle-exclamation text-red-400 mt-0.5"></i>
+              <span>{error}</span>
+            </div>
+          )}
+
           <div>
             <label className="block text-[10px] text-slate-500 font-bold uppercase mb-1">Incident Title</label>
             <input
@@ -176,7 +210,7 @@ export default function PromoteToIncidentModal({ alerts, onClose, onSuccess }: P
           </button>
           <button
             onClick={handleSubmit}
-            disabled={saving || !title.trim()}
+            disabled={saving || !title.trim() || blocked.length > 0}
             className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-5 py-2 rounded-lg text-sm font-bold shadow-lg shadow-indigo-500/20 transition"
           >
             {saving ? 'Creating…' : 'Create Incident'}

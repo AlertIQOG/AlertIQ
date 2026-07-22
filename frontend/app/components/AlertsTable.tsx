@@ -96,6 +96,14 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
                 <i className="fas fa-layer-group"></i> AGG · {alert.childCount}
               </span>
             )}
+            {alert.open_incident_id && (
+              <span
+                className="inline-flex items-center gap-1 text-[9px] bg-red-500/15 text-red-400 border border-red-500/30 px-1.5 py-0.5 rounded font-bold shrink-0"
+                title="An incident is already open for this alert"
+              >
+                <i className="fas fa-fire-flame-curved"></i> INCIDENT
+              </span>
+            )}
             <span className="truncate min-w-0 max-w-[460px]" title={alert.message}>{alert.message}</span>
           </div>
           <div className="text-xs text-slate-500 mt-0.5 truncate max-w-[460px]" title={alert.external_id}>ID: {alert.external_id}</div>

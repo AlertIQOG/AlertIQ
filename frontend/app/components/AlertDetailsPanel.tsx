@@ -544,12 +544,30 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
           {/* Actions */}
           <div className="pt-2">
             <label className="block text-[10px] font-bold text-slate-500 mb-2 uppercase">Actions</label>
-            <button
-              onClick={() => onPromote?.(alert)}
-              className="w-full bg-slate-800 border border-slate-700 text-white hover:bg-slate-700 py-2.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2"
-            >
-              <i className="fas fa-arrow-up"></i> Promote
-            </button>
+            {alert.open_incident_id ? (
+              <div className="space-y-2">
+                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 flex gap-2.5">
+                  <i className="fas fa-fire-flame-curved text-red-400 mt-0.5"></i>
+                  <div className="text-xs text-red-300">
+                    <p className="font-bold">An incident is already open for this alert.</p>
+                    <p className="text-red-400/80 mt-0.5">No need to open another one.</p>
+                  </div>
+                </div>
+                <a
+                  href={`/incidents/${alert.open_incident_id}`}
+                  className="w-full bg-slate-800 border border-slate-700 text-white hover:bg-slate-700 py-2.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2"
+                >
+                  <i className="fas fa-arrow-up-right-from-square"></i> View incident
+                </a>
+              </div>
+            ) : (
+              <button
+                onClick={() => onPromote?.(alert)}
+                className="w-full bg-slate-800 border border-slate-700 text-white hover:bg-slate-700 py-2.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2"
+              >
+                <i className="fas fa-arrow-up"></i> Promote
+              </button>
+            )}
           </div>
 
         </div>
