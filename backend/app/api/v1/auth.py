@@ -13,8 +13,11 @@ from fastapi.security import OAuth2PasswordRequestForm
 from app.api.v1.dependencies import CurrentUser, DbSession
 from app.core.exceptions import AuthenticationError
 from app.core.security import create_access_token
-from app.schemas.user import Token, UserCreate, UserRead
+from app.schemas.user import GoogleLoginRequest, Token, UserCreate, UserRead
 from app.services.user import user_service
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token
+from app.core.config import settings
 
 router = APIRouter()
 
@@ -47,6 +50,48 @@ def login(
     token = create_access_token(user.id, user.role.value)
     return Token(access_token=token, user=UserRead.model_validate(user))
 
+@router.post("/google", response_model=Token)
+def google_login(
+    *,
+    session: DbSession,
+    payload: GoogleLoginRequest,
+) -> Token:
+    """Authenticate a user using a Google ID token."""
+
+    if not settings.GOOGLE_CLIENT_ID:
+        raise AuthenticationError("Google authentication is not configured")
+
+    try:
+        google_user = id_token.verify_oauth2_token(
+            payload.credential,
+            google_requests.Request(),
+            settings.GOOGLE_CLIENT_ID,
+        )
+    except ValueError as exc:
+        raise AuthenticationError("Invalid Google credential") from exc
+
+    email = google_user.get("email")
+    email_verified = google_user.get("email_verified", False)
+    full_name = google_user.get("name")
+
+    if not email or not email_verified:
+        raise AuthenticationError("Google account email is not verified")
+
+    user = user_service.get_or_create_google_user(
+        session,
+        email=email,
+        full_name=full_name,
+    )
+
+    if not user.is_active:
+        raise AuthenticationError("User account is inactive")
+
+    token = create_access_token(user.id, user.role.value)
+
+    return Token(
+        access_token=token,
+        user=UserRead.model_validate(user),
+    )
 
 @router.get("/me", response_model=UserRead)
 def read_current_user(current_user: CurrentUser) -> UserRead:

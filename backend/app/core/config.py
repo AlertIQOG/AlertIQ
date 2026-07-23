@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     # Auth
     SECRET_KEY: str = "dev-only-secret-change-me"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
+    GOOGLE_CLIENT_ID: str = ""
 
     # ── Resolution Copilot (RAG) ──────────────────────────────────────
     # Generation provider switch: "anthropic" or "google". Selects which

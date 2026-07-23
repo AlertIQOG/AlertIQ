@@ -26,3 +26,6 @@ python-multipart
 anthropic          # Claude generation provider
 google-genai       # Gemini generation provider (from google import genai)
 voyageai           # embeddings (voyage-3)
+
+# Google connection
+google-auth
