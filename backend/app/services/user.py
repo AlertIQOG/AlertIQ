@@ -23,18 +23,34 @@ class UserService(CRUDBase[User]):
         statement = select(User).where(User.username == username)
         return session.exec(statement).first()
 
+    def get_by_email(self, session: Session, *, email: str) -> User | None:
+        """Return the active user with the given email, or ``None``."""
+        statement = select(User).where(User.email == email.strip().lower())
+        return session.exec(statement).first()
+
     def create_user(self, session: Session, *, obj_in: UserCreate) -> User:
-        """Create a user, hashing the password. Raises on duplicate username."""
+        """Create a user, hashing the password. Raises on duplicate username/email."""
         if self.get_by_username(session, username=obj_in.username):
             raise ConflictError(f"Username '{obj_in.username}' already exists")
+        if obj_in.email and self.get_by_email(session, email=obj_in.email):
+            raise ConflictError(f"Email '{obj_in.email}' is already registered")
 
         user = User(
             username=obj_in.username,
+            email=obj_in.email,
             hashed_password=hash_password(obj_in.password),
             full_name=obj_in.full_name,
             role=obj_in.role,
         )
         return self.create(session, obj_in=user)
+
+    def set_password(self, session: Session, *, user: User, new_password: str) -> User:
+        """Replace a user's password with a fresh bcrypt hash."""
+        return self.update(
+            session,
+            db_obj=user,
+            update_data={"hashed_password": hash_password(new_password)},
+        )
 
     def get_or_create_google_user(
         self,
@@ -52,6 +68,7 @@ class UserService(CRUDBase[User]):
 
         user = User(
             username=email,
+            email=email,
             hashed_password=hash_password(secrets.token_urlsafe(32)),
             full_name=full_name,
         )

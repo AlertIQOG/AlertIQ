@@ -43,6 +43,16 @@ with engine.begin() as conn:
             "ADD COLUMN IF NOT EXISTS linked_alert_ids jsonb NOT NULL DEFAULT '[]'::jsonb"
         )
     )
+    conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS email varchar"))
+    conn.execute(
+        text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_email ON users (email)")
+    )
+    conn.execute(
+        text(
+            "UPDATE users SET email = username "
+            "WHERE email IS NULL AND username LIKE '%@%'"
+        )
+    )
     # Backfill pre-existing incidents so their single link shows up in the list.
     conn.execute(
         text(

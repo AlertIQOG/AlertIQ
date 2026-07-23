@@ -8,6 +8,7 @@ import { register } from '../services/authApi';
 export default function SignUpPage() {
   const router = useRouter();
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -24,7 +25,7 @@ export default function SignUpPage() {
     }
 
     setSubmitting(true);
-    const result = await register(username, password, fullName || undefined);
+    const result = await register(username, email, password, fullName || undefined);
     setSubmitting(false);
 
     if (typeof result === 'string') {
@@ -34,7 +35,7 @@ export default function SignUpPage() {
     }
   };
 
-  const isValid = username && password && confirmPassword;
+  const isValid = username && email && password && confirmPassword;
 
   return (
     <main className="flex-1 flex items-center justify-center">
@@ -64,6 +65,22 @@ export default function SignUpPage() {
               maxLength={64}
               className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-500 transition"
             />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase" htmlFor="email">
+              Email <span className="text-red-400">*</span>
+            </label>
+            <input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              required
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-500 transition"
+            />
+            <p className="text-[10px] text-slate-600 mt-1">Used for password recovery</p>
           </div>
 
           <div>
