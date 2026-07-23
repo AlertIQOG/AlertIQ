@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { login } from '../services/authApi';
+import { login, loginWithGoogle } from '../services/authApi';
+import { GoogleLogin } from '@react-oauth/google';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -11,6 +12,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [googleSubmitting, setGoogleSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,6 +24,28 @@ export default function LoginPage() {
       router.replace('/');
     } else {
       setError('Incorrect username or password');
+    }
+  };
+
+    const handleGoogleSuccess = async (
+    credentialResponse: { credential?: string },
+  ) => {
+    if (!credentialResponse.credential) {
+      setError('Google did not return a valid credential');
+      return;
+    }
+
+    setError(null);
+    setGoogleSubmitting(true);
+
+    const user = await loginWithGoogle(credentialResponse.credential);
+
+    setGoogleSubmitting(false);
+
+    if (user) {
+      router.replace('/');
+    } else {
+      setError('Could not sign in with Google. Please try again.');
     }
   };
 
@@ -78,7 +102,34 @@ export default function LoginPage() {
             <i className={`fas ${submitting ? 'fa-spinner fa-spin' : 'fa-arrow-right-to-bracket'} text-xs`}></i>
             {submitting ? 'Signing in…' : 'Sign in'}
           </button>
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-slate-800" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+              Or continue with
+            </span>
+            <div className="h-px flex-1 bg-slate-800" />
+          </div>
 
+          <div className="flex justify-center">
+            {googleSubmitting ? (
+              <div className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-950 py-2.5 text-sm text-slate-300">
+                <i className="fas fa-spinner fa-spin text-xs" />
+                Connecting to Google…
+              </div>
+            ) : (
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={() => {
+                  setError('Google sign-in was cancelled or failed.');
+                }}
+                theme="filled_black"
+                size="large"
+                shape="rectangular"
+                text="continue_with"
+                width="302"
+              />
+            )}
+          </div>
           <p className="text-center text-xs text-slate-500">
             Don&apos;t have an account?{' '}
             <Link href="/signup" className="text-indigo-400 hover:text-indigo-300 transition">
