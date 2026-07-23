@@ -29,11 +29,29 @@ export default function CorrelationRulesPage() {
           isActive: rule.enabled,
           logicSummary: {
             source: rule.scope?.source || "N/A",
+            region: rule.scope?.region || "Any",
             condition:
               rule.conditions?.[0]
                 ? `${rule.conditions[0].field} ${rule.conditions[0].operator} ${rule.conditions[0].value ?? ""}`
                 : "No conditions",
           },
+          conditions: (rule.conditions || []).map(
+            (
+              condition: {
+                id?: string;
+                metric?: string;
+                field?: string;
+                operator?: string;
+                value?: unknown;
+              },
+              index: number,
+            ) => ({
+              id: condition.id || String(index),
+              metric: condition.metric || condition.field || "Unknown field",
+              operator: condition.operator || "",
+              value: String(condition.value ?? ""),
+            }),
+          ),
           timeWindow: `${rule.time_window_minutes} mins`,
           lastTriggered: "Never",
         }));

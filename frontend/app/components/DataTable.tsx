@@ -29,8 +29,8 @@ export default function DataTable<T>({ columns, data, onRowClick, rowClassName, 
   const activeDir = sortBy ? sortDir : defaultSortDir;
   const isDefault = !sortBy;
   return (
-    <div className="w-full h-full bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm flex flex-col">
-      <div className="w-full overflow-x-auto custom-scrollbar flex-1">
+  <div className="w-full bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+    <div className="w-full max-h-[60vh] overflow-auto custom-scrollbar">
       <table className="w-full text-left text-base">
         <thead className="bg-slate-800/50 text-xs uppercase font-semibold text-slate-500 border-b border-slate-800">
           <tr>
