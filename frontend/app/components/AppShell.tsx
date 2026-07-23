@@ -42,7 +42,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('storage', sync);
   }, [pathname]);
 
-  const isPublicPage = pathname === '/login' || pathname === '/signup';
+  const isPublicPage =
+    pathname === '/login' ||
+    pathname === '/signup' ||
+    pathname === '/forgot-password' ||
+    pathname === '/reset-password';
 
   // Read the token fresh from localStorage rather than the `token` state:
   // right after a same-tab login the state update is still queued, so the
