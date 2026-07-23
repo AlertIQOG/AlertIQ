@@ -12,6 +12,7 @@ from app.core.security import hash_password, verify_password
 from app.models.user import User
 from app.schemas.user import UserCreate
 from app.services.base import CRUDBase
+import secrets
 
 
 class UserService(CRUDBase[User]):
@@ -33,6 +34,28 @@ class UserService(CRUDBase[User]):
             full_name=obj_in.full_name,
             role=obj_in.role,
         )
+        return self.create(session, obj_in=user)
+
+    def get_or_create_google_user(
+        self,
+        session: Session,
+        *,
+        email: str,
+        full_name: str | None,
+    ) -> User:
+        """Return an existing Google user or create a new one."""
+
+        user = self.get_by_username(session, username=email)
+
+        if user is not None:
+            return user
+
+        user = User(
+            username=email,
+            hashed_password=hash_password(secrets.token_urlsafe(32)),
+            full_name=full_name,
+        )
+
         return self.create(session, obj_in=user)
 
     def authenticate(

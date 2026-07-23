@@ -29,7 +29,11 @@ class UserRead(BaseModel):
     is_active: bool
     created_at: datetime | None = None
 
+class GoogleLoginRequest(BaseModel):
+    """Google ID token received from the frontend."""
 
+    credential: str = Field(min_length=1)
+    
 class Token(BaseModel):
     """OAuth2-style bearer-token response returned by ``/auth/login``."""
 

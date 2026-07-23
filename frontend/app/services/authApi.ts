@@ -23,6 +23,34 @@ export async function login(username: string, password: string): Promise<AuthUse
   }
 }
 
+export async function loginWithGoogle(
+  credential: string,
+): Promise<AuthUser | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/auth/google`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ credential }),
+    });
+
+    if (!response.ok) {
+      console.error('Google login failed:', response.status);
+      return null;
+    }
+
+    const data = await response.json();
+
+    setSession(data.access_token as string, data.user as AuthUser);
+
+    return data.user as AuthUser;
+  } catch (error) {
+    console.error('Google login failed:', error);
+    return null;
+  }
+}
+
 /**
  * Register a new account and auto-login on success.
  * Returns the created user, or an error message string on failure.
