@@ -29,6 +29,7 @@ export default function CorrelationRulesPage() {
           isActive: rule.enabled,
           logicSummary: {
             source: rule.scope?.source || "N/A",
+            region: rule.scope?.region || "Any",
             condition:
               rule.conditions?.[0]
                 ? `${rule.conditions[0].field} ${rule.conditions[0].operator} ${rule.conditions[0].value ?? ""}`

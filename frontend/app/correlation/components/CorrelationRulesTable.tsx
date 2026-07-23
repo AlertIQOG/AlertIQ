@@ -3,18 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import DataTable, { ColumnDef } from '../../components/DataTable';
-
-export interface CorrelationRule {
-  id: string;
-  name: string;
-  isActive: boolean;
-  logicSummary: {
-    source: string;
-    condition: string;
-  };
-  timeWindow: string;
-  lastTriggered: string;
-}
+import type { CorrelationRule } from "../../types/correlation";
 
 interface CorrelationRulesTableProps {
   rules: CorrelationRule[];
@@ -64,11 +53,24 @@ export default function CorrelationRulesTable({
       header: 'LOGIC SUMMARY',
       className: 'flex-1',
       renderCell: (rule: CorrelationRule) => (
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-slate-400">Source:</span>
-          <span className="text-indigo-400 font-medium">{rule.logicSummary.source}</span>
-          <span className="bg-slate-800 px-2 py-0.5 rounded text-slate-300 font-medium">AND</span>
-          <span className="bg-slate-800 px-2 py-0.5 rounded text-slate-300 font-medium">{rule.logicSummary.condition}</span>
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-400">Source:</span>
+
+            <span className="font-medium text-indigo-400">
+              {rule.logicSummary.source}
+            </span>
+          </div>
+
+          <div className="h-4 w-px bg-slate-700" />
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-400">Environment:</span>
+
+            <span className="rounded bg-slate-800 px-2 py-0.5 font-medium text-slate-300">
+              {rule.logicSummary.region}
+            </span>
+          </div>
         </div>
       ),
     },

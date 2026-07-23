@@ -31,6 +31,7 @@ export interface CorrelationRule {
   // Helper fields for table display
   logicSummary: {
     source: string;
+    region: string;
     condition: string;
   };
   lastTriggered: string;
