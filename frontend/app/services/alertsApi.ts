@@ -12,15 +12,55 @@ function normalizeAlert(raw: unknown): Alert {
   };
 }
 
-export async function fetchAlerts(
-  skip: number = 0,
-  limit: number = 100,
-  severity: string = 'ALL',
-  status: string = 'ALL',
-  region: string = 'ALL',
-  sortBy: string = 'created_at',
-  sortDir: string = 'desc'
-): Promise<Alert[]> {
+export interface AlertFilterOptions {
+  severity: string[];
+  status: string[];
+  region: string[];
+  application: string[];
+  component: string[];
+  source: string[];
+}
+
+// The selectable values for the feed's filters, sourced from the backend so
+// severity/status track their enums and region reflects real data.
+export async function fetchAlertFilterOptions(): Promise<AlertFilterOptions> {
+  try {
+    const response = await apiFetch('/alerts/filters');
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return await response.json() as AlertFilterOptions;
+  } catch (error) {
+    console.error('Error fetching alert filter options:', error);
+    return { severity: [], status: [], region: [], application: [], component: [], source: [] };
+  }
+}
+
+export interface AlertQuery {
+  skip?: number;
+  limit?: number;
+  // Each filter is a list; multiple values are OR-ed.
+  severity?: string[];
+  status?: string[];
+  region?: string[];
+  application?: string[];
+  component?: string[];
+  source?: string[];
+  sortBy?: string;
+  sortDir?: string;
+}
+
+export async function fetchAlerts(query: AlertQuery = {}): Promise<Alert[]> {
+  const {
+    skip = 0,
+    limit = 100,
+    severity = [],
+    status = [],
+    region = [],
+    application = [],
+    component = [],
+    source = [],
+    sortBy = 'created_at',
+    sortDir = 'desc',
+  } = query;
   try {
     const params = new URLSearchParams({
       skip: skip.toString(),
@@ -29,9 +69,11 @@ export async function fetchAlerts(
       sort_dir: sortDir,
     });
 
-    if (severity !== 'ALL') params.append('severity', severity);
-    if (status !== 'ALL') params.append('status', status);
-    if (region !== 'ALL') params.append('region', region);
+    // Repeat a param per value: ?status=Open&status=In progress
+    const filters = { severity, status, region, application, component, source };
+    for (const [key, values] of Object.entries(filters)) {
+      for (const value of values) params.append(key, value);
+    }
 
     const response = await apiFetch(`/alerts/?${params.toString()}`);
 
