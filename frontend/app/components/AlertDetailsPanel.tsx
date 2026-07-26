@@ -27,6 +27,7 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
   const [editText, setEditText] = useState('');
   const [assignee, setAssignee] = useState<string | null>(alert.assignee ?? null);
   const [assigning, setAssigning] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
   const [showRawData, setShowRawData] = useState(false);
 
     // Child alerts grouped under this alert (only for aggregated alerts).
@@ -209,6 +210,57 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
   // Add currentUsername to the list to ensure the current user is always an option, even if not in systemUsers
   const assigneeOptions = Array.from(new Set([...systemUsers, currentUsername].filter(Boolean)));
 
+  // ── Derived alert content (top-level fields + extra_fields) ──
+  const extra = (alert.extra_fields ?? {}) as Record<string, unknown>;
+  const annotations = (extra.annotations ?? {}) as Record<string, unknown>;
+  const summaryText = typeof annotations.summary === 'string' ? annotations.summary : '';
+  const descriptionText =
+    typeof annotations.description === 'string' && annotations.description !== summaryText
+      ? annotations.description
+      : '';
+  const provider = typeof extra.source === 'string' ? extra.source : null;
+
+  const formatAbsolute = (iso?: string) => {
+    if (!iso) return '—';
+    try {
+      return new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+    } catch {
+      return iso;
+    }
+  };
+
+  const providerBadge = (p: string) => {
+    const s = p.toLowerCase();
+    if (s === 'grafana') return 'text-orange-300 border-orange-500/30 bg-orange-500/10';
+    if (s === 'prometheus') return 'text-red-300 border-red-500/30 bg-red-500/10';
+    return 'text-slate-300 border-slate-600 bg-slate-800';
+  };
+
+  const contextRows = [
+    { label: 'Created', value: formatAbsolute(alert.created_at), icon: 'fa-clock' },
+    { label: 'Application', value: alert.application, icon: 'fa-cube' },
+    { label: 'Component', value: alert.component, icon: 'fa-puzzle-piece' },
+    { label: 'Host / Node', value: alert.node_name, icon: 'fa-server' },
+    { label: 'Impact', value: alert.impact, icon: 'fa-bolt' },
+    { label: 'Operator', value: alert.operator, icon: 'fa-user-gear' },
+  ].filter((r) => r.value);
+
+  // Raw provider labels (instance, job, alertname…) shown as chips.
+  const labels = (extra.labels ?? {}) as Record<string, unknown>;
+  const labelEntries = Object.entries(labels).filter(
+    ([, v]) => typeof v === 'string' || typeof v === 'number'
+  ) as [string, string | number][];
+
+  const copyFingerprint = () => {
+    navigator.clipboard?.writeText(alert.external_id).then(
+      () => {
+        setCopiedId(true);
+        setTimeout(() => setCopiedId(false), 1500);
+      },
+      () => {}
+    );
+  };
+
   return (
     <>
       <div
@@ -242,14 +294,28 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
               </button>
             )}
             <h3 className="text-xl font-bold text-white mb-3 leading-snug">{alert.message}</h3>
-            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
+            <div className="flex items-center flex-wrap gap-2 text-[10px] font-bold uppercase tracking-wider">
               <span className={`px-2.5 py-1 rounded border ${getSeverityBadge(alert.severity)}`}>
                 {alert.severity} SEVERITY
               </span>
               <span className="px-2.5 py-1 rounded border border-indigo-500/30 bg-indigo-500/10 text-indigo-400">
                 {alert.region === 'PROD' ? 'PRODUCTION' : alert.region || 'UNKNOWN ENV'}
               </span>
+              {provider && (
+                <span className={`px-2.5 py-1 rounded border inline-flex items-center gap-1 ${providerBadge(provider)}`}>
+                  <i className="fas fa-satellite-dish"></i> {provider}
+                </span>
+              )}
             </div>
+
+            {(summaryText || descriptionText) && (
+              <div className="mt-3 rounded-lg border border-slate-800 bg-slate-900/50 p-3">
+                {summaryText && <p className="text-sm text-slate-200 leading-relaxed">{summaryText}</p>}
+                {descriptionText && (
+                  <p className="text-xs text-slate-400 leading-relaxed mt-2 whitespace-pre-wrap">{descriptionText}</p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Status */}
@@ -297,6 +363,52 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
               </div>
             </div>
           </div>
+
+          {/* Details / context */}
+          {contextRows.length > 0 && (
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 mb-2 uppercase">Details</label>
+              <div className="space-y-2">
+                {contextRows.map((row) => (
+                  <div key={row.label} className="flex items-center justify-between gap-3 text-xs">
+                    <span className="text-slate-500 shrink-0"><i className={`fas ${row.icon} w-4`}></i> {row.label}</span>
+                    <span className="text-slate-300 font-medium truncate text-right" title={row.value}>{row.value}</span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between gap-3 text-xs pt-1">
+                  <span className="text-slate-500 shrink-0"><i className="fas fa-fingerprint w-4"></i> Fingerprint</span>
+                  <button
+                    onClick={copyFingerprint}
+                    title={`${alert.external_id}\n\nClick to copy`}
+                    className="flex items-center gap-1.5 font-mono text-slate-400 hover:text-slate-200 transition min-w-0"
+                  >
+                    <span className="truncate">{alert.external_id.slice(0, 14)}…</span>
+                    <i className={`fas ${copiedId ? 'fa-check text-green-400' : 'fa-copy'} text-[10px] shrink-0`}></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Metric labels */}
+          {labelEntries.length > 0 && (
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 mb-2 uppercase">Labels</label>
+              <div className="flex flex-wrap gap-1.5">
+                {labelEntries.map(([k, v]) => (
+                  <span
+                    key={k}
+                    className="inline-flex items-center gap-1 rounded border border-slate-700 bg-slate-800/60 px-2 py-0.5 text-[10px] font-mono max-w-full"
+                    title={`${k}=${v}`}
+                  >
+                    <span className="text-slate-500">{k}</span>
+                    <span className="text-slate-500">=</span>
+                    <span className="text-slate-300 truncate">{v}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
                     {/* Correlation Context — grouped alerts (aggregated alerts only) */}
           {alert.isAggregated && (
