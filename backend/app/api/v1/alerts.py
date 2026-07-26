@@ -23,7 +23,13 @@ from app.api.v1.dependencies import (
 )
 from app.core.exceptions import NotFoundError
 from app.models.alert import Alert
-from app.schemas.alert import AggregateRequest, AlertCreate, AlertRead, AlertUpdate
+from app.schemas.alert import (
+    AggregateRequest,
+    AlertCreate,
+    AlertFilterOptions,
+    AlertRead,
+    AlertUpdate,
+)
 from app.schemas.rag import (
     CopilotCitation,
     CopilotResponse,
@@ -84,6 +90,26 @@ def list_alerts(
         order_desc=sort.order_desc,
     )
     return _with_open_incident(session, alerts)
+
+
+@router.get("/filters", response_model=AlertFilterOptions)
+def get_alert_filters(*, session: DbSession) -> AlertFilterOptions:
+    """Return the selectable values for each alerts-feed filter.
+
+    Every list is the distinct set actually present in the data, so a dropdown
+    never offers a value that would match no alerts.
+    """
+    distinct = alert_service.distinct_column_values
+    return AlertFilterOptions(
+        severity=distinct(session, "severity"),
+        status=distinct(session, "status"),
+        region=distinct(session, "region"),
+        application=distinct(session, "application"),
+        component=distinct(session, "component"),
+        source=alert_service.distinct_sources(session),
+    )
+
+
 @router.post("/aggregate", response_model=AlertRead, status_code=status.HTTP_201_CREATED)
 def aggregate_alerts(*, session: DbSession, body: AggregateRequest) -> AlertRead:
     """Group multiple alerts into one aggregated alert and dismiss the originals."""

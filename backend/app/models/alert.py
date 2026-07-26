@@ -39,12 +39,12 @@ class Alert(SQLModel, table=True):
     application: str | None = Field(default=None, index=True)
     component: str | None = Field(default=None, index=True)
     impact: str | None = Field(default=None)
-    region: str | None = Field(default=None)
+    region: str | None = Field(default=None, index=True)
     node_name: str | None = Field(default=None)
     operator: str | None = Field(default=None)
     assignee: str | None = Field(default=None, index=True)
-    severity: AlertSeverity
-    status: AlertStatus = Field(default=AlertStatus.OPEN)
+    severity: AlertSeverity = Field(index=True)
+    status: AlertStatus = Field(default=AlertStatus.OPEN, index=True)
     created_at: datetime | None = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

@@ -61,21 +61,27 @@ class CRUDBase(Generic[ModelType]):
     def _apply_filters(self, statement: Any, filters: dict[str, Any]) -> Any:
         """Attach ``WHERE`` clauses for each non-``None`` filter to ``statement``.
 
-        Resolution mirrors ``get_filtered``: a key matching a model column emits
-        ``column = value``; otherwise it probes the model's JSONB field. Shared
-        so subclasses can build custom-ordered queries without duplicating this.
+        Resolution mirrors ``get_filtered``: a key matching a model column filters
+        that column; otherwise it probes the model's JSONB field. A list/tuple/set
+        value becomes an ``IN`` clause (OR within one filter); a scalar stays an
+        equality check. Shared so subclasses can build custom-ordered queries
+        without duplicating this.
         """
         for field, value in filters.items():
-            if value is None:
+            if value is None or (isinstance(value, (list, tuple, set)) and not value):
                 continue
+            is_multi = isinstance(value, (list, tuple, set))
 
             if field in self._column_names:
-                # Direct column match -> standard WHERE clause
-                statement = statement.where(getattr(self.model, field) == value)
+                col = getattr(self.model, field)
+                statement = statement.where(
+                    col.in_(list(value)) if is_multi else col == value
+                )
             elif self._jsonb_field is not None:
-                # Not a column -> probe inside the JSONB field
-                jsonb_col = getattr(self.model, self._jsonb_field)
-                statement = statement.where(jsonb_col[field].astext == str(value))
+                expr = getattr(self.model, self._jsonb_field)[field].astext
+                statement = statement.where(
+                    expr.in_([str(v) for v in value]) if is_multi else expr == str(value)
+                )
 
         return statement
 

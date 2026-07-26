@@ -172,23 +172,26 @@ class AlertFilterParams(FilterParams):
 
     def __init__(
         self,
-        severity: AlertSeverity | None = Query(
-            None, description="Filter by severity level (e.g. Critical, Warning)"
+        severity: list[AlertSeverity] | None = Query(
+            None, description="Filter by severity level(s); repeat for multiple (OR)"
         ),
-        status: AlertStatus | None = Query(
-            None, description="Filter by alert status (e.g. Open, Solved)"
+        status: list[AlertStatus] | None = Query(
+            None, description="Filter by alert status(es); repeat for multiple (OR)"
         ),
-        region: str | None = Query(
-            None, description="Filter by region (e.g. PROD, STG)"
+        region: list[str] | None = Query(
+            None, description="Filter by region(s); repeat for multiple (OR)"
         ),
         source_id: uuid.UUID | None = Query(
             None, description="Filter by source / provider ID"
         ),
-        application: str | None = Query(
-            None, description="Filter by application name (e.g. core-api, payments)"
+        application: list[str] | None = Query(
+            None, description="Filter by application name(s); repeat for multiple (OR)"
         ),
-        component: str | None = Query(
-            None, description="Filter by component (e.g. compute, network, storage)"
+        component: list[str] | None = Query(
+            None, description="Filter by component(s); repeat for multiple (OR)"
+        ),
+        source: list[str] | None = Query(
+            None, description="Filter by ingest provider(s); repeat for multiple (OR)"
         ),
         node_name: str | None = Query(
             None, description="Filter by node name (e.g. prod-node-1)"
@@ -206,6 +209,7 @@ class AlertFilterParams(FilterParams):
         self.source_id = source_id
         self.application = application
         self.component = component
+        self.source = source
         self.node_name = node_name
         self.operator = operator
         self.assignee = assignee

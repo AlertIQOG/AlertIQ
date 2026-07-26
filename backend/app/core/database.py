@@ -51,6 +51,27 @@ with engine.begin() as conn:
         )
     )
 
+# Indexes backing the feed's filter dropdowns, so each filter's DISTINCT runs as
+# an index-only scan instead of a full table scan. Built CONCURRENTLY (which
+# cannot run inside a transaction) so they never lock the alerts table for writes
+# while building on an already-large database.
+with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+    conn.execute(
+        text("CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_alerts_region ON alerts (region)")
+    )
+    conn.execute(
+        text("CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_alerts_severity ON alerts (severity)")
+    )
+    conn.execute(
+        text("CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_alerts_status ON alerts (status)")
+    )
+    conn.execute(
+        text(
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_alerts_source "
+            "ON alerts ((extra_fields->>'source'))"
+        )
+    )
+
 
 def get_session() -> Generator[Session, None, None]:
     """Yield a database session."""

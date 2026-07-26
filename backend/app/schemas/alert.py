@@ -72,6 +72,21 @@ class AggregateRequest(BaseModel):
     title: str | None = None
 
 
+class AlertFilterOptions(BaseModel):
+    """Available values for each alerts-feed filter.
+
+    Every list reflects the distinct values currently present in the database,
+    so a filter never offers a value that would return no alerts.
+    """
+
+    severity: list[str]
+    status: list[str]
+    region: list[str]
+    application: list[str]
+    component: list[str]
+    source: list[str]
+
+
 class AlertRead(BaseModel):
     """Schema returned to the client — never exposes the raw DB model."""
 
