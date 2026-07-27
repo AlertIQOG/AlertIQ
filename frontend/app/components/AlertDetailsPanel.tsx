@@ -488,38 +488,32 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
             </div>
           )}
 
-          {/* Notes */}
-          <div>
-            <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase">Notes</label>
-            <div className="bg-slate-900 border border-slate-700 rounded-lg p-3">
-              <textarea
-                value={noteText}
-                onChange={(e) => setNoteText(e.target.value)}
-                className="w-full bg-transparent text-sm text-slate-300 outline-none resize-none placeholder-slate-600 mb-2"
-                rows={3}
-                placeholder="Add operational notes..."
-              />
-              <button
-                onClick={handleSaveNote}
-                disabled={saving || !noteText.trim()}
-                className="w-full bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-700 text-slate-300 py-2 rounded-md text-sm font-medium transition flex items-center justify-center gap-2"
-              >
-                <i className={`fas ${saving ? 'fa-spinner fa-spin' : 'fa-paper-plane'} text-xs`}></i>
-                {saving ? 'Saving...' : 'Save Note'}
-              </button>
+          {/* Notes — a self-contained chat card so it reads as one module */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-slate-800 bg-slate-900/60">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <i className="fas fa-comment-dots text-slate-500"></i> Notes
+              </span>
+              {notes.length > 0 && (
+                <span className="text-[10px] font-semibold text-slate-400 bg-slate-800 rounded-full px-2 py-0.5">
+                  {notes.length}
+                </span>
+              )}
             </div>
 
-            {/* Notes thread — mine on the right, everyone else's on the left */}
+            {/* Thread — mine on the right, everyone else's on the left */}
+            <div className="max-h-72 overflow-y-auto custom-scrollbar p-3 bg-slate-950/40">
             {notesLoading ? (
-              <p className="mt-3 text-xs text-slate-500 text-center py-3 flex items-center justify-center gap-2">
+              <p className="text-xs text-slate-500 text-center py-4 flex items-center justify-center gap-2">
                 <i className="fas fa-circle-notch fa-spin text-indigo-500"></i> Loading notes…
               </p>
             ) : notes.length === 0 ? (
-              <p className="mt-3 text-xs text-slate-600 text-center py-3">
+              <p className="text-xs text-slate-600 text-center py-4">
                 No notes yet — be the first to add one.
               </p>
             ) : (
-              <div className="mt-3 space-y-3">
+              <div className="space-y-3">
                 {notes.map((note) => {
                   const mine = isMine(note);
                   return (
@@ -603,6 +597,26 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
                 })}
               </div>
             )}
+            </div>
+
+            {/* Composer pinned at the bottom, like a chat input */}
+            <div className="border-t border-slate-800 p-2.5 bg-slate-900/60">
+              <textarea
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300 outline-none resize-none placeholder-slate-600 focus:border-indigo-500 transition mb-2"
+                rows={2}
+                placeholder="Add operational note…"
+              />
+              <button
+                onClick={handleSaveNote}
+                disabled={saving || !noteText.trim()}
+                className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2"
+              >
+                <i className={`fas ${saving ? 'fa-spinner fa-spin' : 'fa-paper-plane'} text-xs`}></i>
+                {saving ? 'Saving…' : 'Add Note'}
+              </button>
+            </div>
           </div>
 
           {/* Resolution Copilot */}
