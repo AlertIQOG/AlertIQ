@@ -13,6 +13,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,23 +117,27 @@ export default function LoginPage() {
           </div>
 
           <div className="flex justify-center">
-            {googleSubmitting ? (
-              <div className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-950 py-2.5 text-sm text-slate-300">
-                <i className="fas fa-spinner fa-spin text-xs" />
-                Connecting to Google…
-              </div>
-            ) : (
-              <GoogleLogin
-                onSuccess={handleGoogleSuccess}
-                onError={() => {
-                  setError('Google sign-in was cancelled or failed.');
-                }}
-                theme="filled_black"
-                size="large"
-                shape="rectangular"
-                text="continue_with"
-                width="302"
-              />
+            {googleClientId && (
+              <>
+                {googleSubmitting ? (
+                  <div className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-950 py-2.5 text-sm text-slate-300">
+                    <i className="fas fa-spinner fa-spin text-xs" />
+                    Connecting to Google…
+                  </div>
+                ) : (
+                  <GoogleLogin
+                    onSuccess={handleGoogleSuccess}
+                    onError={() => {
+                      setError("Google sign-in was cancelled or failed.");
+                    }}
+                    theme="filled_black"
+                    size="large"
+                    shape="rectangular"
+                    text="continue_with"
+                    width="302"
+                  />
+                )}
+              </>
             )}
           </div>
           <p className="text-center text-xs text-slate-500">
