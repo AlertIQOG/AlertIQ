@@ -8,6 +8,7 @@ on:
 jobs:
   deploy:
     runs-on: self-hosted
+
     steps:
       - name: Pull latest code
         run: |
@@ -15,6 +16,8 @@ jobs:
           git pull origin main
 
       - name: Rebuild and restart containers
+        env:
+          NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ secrets.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
         run: |
           cd /home/cs113/AlertIQ
           docker compose -f docker-compose.prod.yml up --build -d
