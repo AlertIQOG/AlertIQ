@@ -1,6 +1,7 @@
 """Alert-specific service logic."""
 
 import uuid
+from enum import Enum
 from typing import Any
 
 from sqlalchemy import case
@@ -48,6 +49,33 @@ class AlertService(CRUDBase[Alert]):
             skip=skip,
             limit=limit,
         )
+
+    # Columns exposed as feed filters whose values come from the data. Each is
+    # indexed, so ``SELECT DISTINCT`` runs as an index-only scan (fast on a large
+    # table). ``source`` is not a column — it lives in ``extra_fields`` JSONB and
+    # is handled separately by ``distinct_sources``.
+    _FILTERABLE_COLUMNS = frozenset(
+        {"severity", "status", "region", "application", "component"}
+    )
+
+    def distinct_column_values(self, session: Session, column: str) -> list[str]:
+        """Return the distinct, non-empty values of a filterable column, sorted."""
+        if column not in self._FILTERABLE_COLUMNS:
+            return []
+        col = getattr(Alert, column)
+        rows = session.exec(select(col).where(col.is_not(None)).distinct()).all()
+        # Enum columns (severity/status) come back as members; use their value.
+        values = [v.value if isinstance(v, Enum) else v for v in rows]
+        return sorted({v for v in values if v})
+
+    def distinct_sources(self, session: Session) -> list[str]:
+        """Return the distinct ingest providers from ``extra_fields.source``.
+
+        Backed by the ``ix_alerts_source`` expression index.
+        """
+        expr = Alert.extra_fields["source"].astext
+        rows = session.exec(select(expr).where(expr.is_not(None)).distinct()).all()
+        return sorted({r for r in rows if r})
 
     def get_filtered(
         self,

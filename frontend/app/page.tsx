@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import AlertsTable from './components/AlertsTable';
 import ColumnPicker from './components/ColumnPicker';
-import { aggregateAlerts, fetchAlerts, updateAlertStatus } from './services/alertsApi';
+import FilterSelect from './components/FilterSelect';
+import { aggregateAlerts, fetchAlerts, fetchAlertFilterOptions, updateAlertStatus, AlertFilterOptions } from './services/alertsApi';
 import { Alert } from './types/alert';
 import AlertDetailsPanel from './components/AlertDetailsPanel';
 import PromoteToIncidentModal from './components/PromoteToIncidentModal';
@@ -19,9 +20,16 @@ const PAGE_SIZE = 25;
 export default function Home() {
   const router = useRouter();
   // State for filters
-  const [sevFilter, setSevFilter] = useState('ALL');
-  const [envFilter, setEnvFilter] = useState('ALL');
-  const [statusFilter, setStatusFilter] = useState('Open');
+  const [sevFilter, setSevFilter] = useState<string[]>([]);
+  const [envFilter, setEnvFilter] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string[]>(['Open']);
+  const [appFilter, setAppFilter] = useState<string[]>([]);
+  const [componentFilter, setComponentFilter] = useState<string[]>([]);
+  const [sourceFilter, setSourceFilter] = useState<string[]>([]);
+  // Selectable filter values, loaded from the backend (severity/status from
+  // their enums, region from real data) so the dropdowns never go stale.
+  const [filterOptions, setFilterOptions] = useState<AlertFilterOptions>({ severity: [], status: [], region: [], application: [], component: [], source: [] });
+  const [filtersLoaded, setFiltersLoaded] = useState(false);
   // Active column sort, or null for the default order (time, newest first).
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
 
@@ -66,6 +74,14 @@ export default function Home() {
     setColumnsLoaded(true);
   }, []);
 
+  // Load the selectable filter values once on mount.
+  useEffect(() => {
+    fetchAlertFilterOptions().then((opts) => {
+      setFilterOptions(opts);
+      setFiltersLoaded(true);
+    });
+  }, []);
+
   // Persist column preferences whenever they change
   const handleColumnsChange = useCallback((columns: string[]) => {
     setVisibleColumns(columns);
@@ -79,8 +95,19 @@ export default function Home() {
   // Fetch a single page under the current filters + ordering.
   const fetchPage = useCallback(
     (skip: number) =>
-      fetchAlerts(skip, PAGE_SIZE, sevFilter, statusFilter, envFilter, sort?.key ?? 'created_at', sort?.dir ?? 'desc'),
-    [sevFilter, statusFilter, envFilter, sort]
+      fetchAlerts({
+        skip,
+        limit: PAGE_SIZE,
+        severity: sevFilter,
+        status: statusFilter,
+        region: envFilter,
+        application: appFilter,
+        component: componentFilter,
+        source: sourceFilter,
+        sortBy: sort?.key ?? 'created_at',
+        sortDir: sort?.dir ?? 'desc',
+      }),
+    [sevFilter, statusFilter, envFilter, appFilter, componentFilter, sourceFilter, sort]
   );
 
   // (Re)load the first page whenever filters or ordering change.
@@ -101,9 +128,12 @@ export default function Home() {
   }, [fetchPage]);
 
   const handleReset = () => {
-    setSevFilter('ALL');
-    setEnvFilter('ALL');
-    setStatusFilter('ALL');
+    setSevFilter([]);
+    setEnvFilter([]);
+    setStatusFilter([]);
+    setAppFilter([]);
+    setComponentFilter([]);
+    setSourceFilter([]);
     setSort(null);
   };
 
@@ -205,29 +235,32 @@ export default function Home() {
         <PageHeader title="Alerts Feed" badge="Incoming Stream" />
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-6">
           {/* Filters Bar */}
-          <div className="flex items-center gap-3 mb-6 p-1">
+          <div className="flex items-center flex-wrap gap-3 mb-6 p-1">
             <div className="text-xs font-bold text-slate-500 uppercase mr-2"><i className="fas fa-filter mr-1"></i> Filters:</div>
 
-            <select value={sevFilter} onChange={(e) => setSevFilter(e.target.value)} className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-3 py-2 text-xs outline-none hover:border-slate-500 cursor-pointer">
-              <option value="ALL">All Severities</option>
-              <option value="Critical">Critical</option>
-              <option value="Error">Error</option>
-              <option value="Warning">Warning</option>
-              <option value="Info">Info</option>
-            </select>
+            {!filtersLoaded ? (
+              // Placeholder pills until the real filter values arrive, so the bar
+              // doesn't visibly pop from 3 to 6 filters.
+              Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-[34px] w-28 rounded-lg bg-slate-800/70 animate-pulse" />
+              ))
+            ) : (
+              <>
+                <FilterSelect value={sevFilter} onChange={setSevFilter} options={filterOptions.severity} allLabel="All Severities" />
+                <FilterSelect value={envFilter} onChange={setEnvFilter} options={filterOptions.region} allLabel="All Regions" />
+                <FilterSelect value={statusFilter} onChange={setStatusFilter} options={filterOptions.status} allLabel="All Statuses" />
 
-            <select value={envFilter} onChange={(e) => setEnvFilter(e.target.value)} className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-3 py-2 text-xs outline-none hover:border-slate-500 cursor-pointer">
-              <option value="ALL">All Regions</option>
-              <option value="PROD">PROD</option>
-              <option value="STG">STG</option>
-            </select>
-
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-3 py-2 text-xs outline-none hover:border-slate-500 cursor-pointer">
-              <option value="ALL">All Statuses</option>
-              <option value="Open">Open</option>
-              <option value="In progress">In Progress</option>
-              <option value="Solved">Solved</option>
-            </select>
+                {filterOptions.application.length > 0 && (
+                  <FilterSelect value={appFilter} onChange={setAppFilter} options={filterOptions.application} allLabel="All Applications" />
+                )}
+                {filterOptions.component.length > 0 && (
+                  <FilterSelect value={componentFilter} onChange={setComponentFilter} options={filterOptions.component} allLabel="All Components" />
+                )}
+                {filterOptions.source.length > 0 && (
+                  <FilterSelect value={sourceFilter} onChange={setSourceFilter} options={filterOptions.source} allLabel="All Sources" />
+                )}
+              </>
+            )}
 
             <button onClick={handleReset} className="text-slate-400 hover:text-white text-xs font-medium px-2 transition">Reset</button>
 
