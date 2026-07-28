@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import AlertsTable from './components/AlertsTable';
 import ColumnPicker from './components/ColumnPicker';
@@ -92,22 +92,25 @@ export default function Home() {
     }
   }, []);
 
+  // Current filter + ordering query, shared by paging and live refresh.
+  const queryBase = useMemo(
+    () => ({
+      severity: sevFilter,
+      status: statusFilter,
+      region: envFilter,
+      application: appFilter,
+      component: componentFilter,
+      source: sourceFilter,
+      sortBy: sort?.key ?? 'created_at',
+      sortDir: sort?.dir ?? 'desc',
+    }),
+    [sevFilter, statusFilter, envFilter, appFilter, componentFilter, sourceFilter, sort]
+  );
+
   // Fetch a single page under the current filters + ordering.
   const fetchPage = useCallback(
-    (skip: number) =>
-      fetchAlerts({
-        skip,
-        limit: PAGE_SIZE,
-        severity: sevFilter,
-        status: statusFilter,
-        region: envFilter,
-        application: appFilter,
-        component: componentFilter,
-        source: sourceFilter,
-        sortBy: sort?.key ?? 'created_at',
-        sortDir: sort?.dir ?? 'desc',
-      }),
-    [sevFilter, statusFilter, envFilter, appFilter, componentFilter, sourceFilter, sort]
+    (skip: number) => fetchAlerts({ ...queryBase, skip, limit: PAGE_SIZE }),
+    [queryBase]
   );
 
   // (Re)load the first page whenever filters or ordering change.
@@ -145,14 +148,18 @@ export default function Home() {
     });
   }, []);
 
+  // Refresh the rows already loaded (all scrolled-in pages) in place, without
+  // collapsing back to page 0 or moving the scroll — used for live updates and
+  // after aggregation. Backend caps a page at 500.
   const refreshAlerts = useCallback(async () => {
     genRef.current += 1;
     const gen = genRef.current;
-    const data = await fetchPage(0);
+    const count = Math.min(Math.max(alerts.length, PAGE_SIZE), 500);
+    const data = await fetchAlerts({ ...queryBase, skip: 0, limit: count });
     if (gen !== genRef.current) return;
     setAlerts(data);
-    setHasMore(data.length === PAGE_SIZE);
-  }, [fetchPage]);
+    setHasMore(data.length === count);
+  }, [queryBase, alerts.length]);
 
   // Append the next page when the sentinel scrolls into view (infinite scroll).
   const loadMore = useCallback(async () => {
@@ -198,9 +205,9 @@ export default function Home() {
     });
   }, []);
 
-  // Live updates: refetch (without the loading overlay) whenever an alert,
-  // aggregate, or note changes on the server.
-  useLiveEvents(['alert.', 'aggregate.', 'note.'], refreshAlerts);
+  // Live updates: refresh the feed when an alert or aggregate changes. Notes
+  // don't affect feed rows, so they're intentionally excluded.
+  useLiveEvents(['alert.', 'aggregate.'], refreshAlerts);
 
   const handleAggregate = async () => {
     if (selectedAlertIds.size < 2) return;
