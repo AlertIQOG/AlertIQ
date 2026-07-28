@@ -191,7 +191,7 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
 
   const formatNoteTime = (iso: string) => {
     try {
-      return new Date(iso).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' });
+      return new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
     } catch {
       return iso;
     }
