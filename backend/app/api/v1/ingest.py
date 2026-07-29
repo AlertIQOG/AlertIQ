@@ -25,6 +25,7 @@ from app.providers.prometheus import PrometheusWebhook, prometheus_normalizer
 from app.schemas.alert import AlertCreate
 from app.services.alert import alert_service
 from app.services.correlation_engine import correlation_engine
+from app.services.events import event_bus
 
 logger = logging.getLogger("alertiq.ingest")
 
@@ -43,35 +44,43 @@ def _persist_and_correlate(
 
     Returns ``{created, updated, aggregated}`` counts, where ``aggregated`` is
     the number of alerts that were folded into (or opened) an aggregate.
+
+    Live-update events for the whole batch are deferred until it finishes. An
+    alert is announced the moment it is persisted, but whether it stands alone
+    or gets folded into a group — and dismissed — is only decided by the
+    correlation step right after. Emitting as we go would let a client render
+    members as standalone alerts in the instant before they are grouped.
     """
     created = 0
     updated = 0
     aggregated = 0
 
-    for alert_create in alert_creates:
-        alert, is_new = alert_service.upsert(session, obj_in=alert_create)
-        if is_new:
-            created += 1
-        else:
-            updated += 1
-            logger.info(
-                "Existing alert updated — source=%s fingerprint=%s external_id=%s",
-                source_id,
-                alert_create.extra_fields.get("fingerprint", "?"),
-                alert_create.external_id,
-            )
+    with event_bus.deferred():
+        for alert_create in alert_creates:
+            alert, is_new = alert_service.upsert(session, obj_in=alert_create)
+            if is_new:
+                created += 1
+            else:
+                updated += 1
+                logger.info(
+                    "Existing alert updated — source=%s fingerprint=%s external_id=%s",
+                    source_id,
+                    alert_create.extra_fields.get("fingerprint", "?"),
+                    alert_create.external_id,
+                )
 
-        # Best-effort correlation: never let a rule error drop the alert.
-        try:
-            if correlation_engine.process_alert(session, alert) is not None:
-                aggregated += 1
-        except Exception:  # noqa: BLE001 — correlation must not break ingest
-            session.rollback()
-            logger.exception(
-                "Correlation failed — source=%s alert=%s (alert persisted, left standalone)",
-                source_id,
-                alert.id,
-            )
+            # Best-effort correlation: never let a rule error drop the alert.
+            try:
+                if correlation_engine.process_alert(session, alert) is not None:
+                    aggregated += 1
+            except Exception:  # noqa: BLE001 — correlation must not break ingest
+                session.rollback()
+                logger.exception(
+                    "Correlation failed — source=%s alert=%s "
+                    "(alert persisted, left standalone)",
+                    source_id,
+                    alert.id,
+                )
 
     logger.info(
         "%s ingest complete — source=%s total=%d created=%d updated=%d aggregated=%d",

@@ -90,6 +90,154 @@ def test_overflow_drops_oldest_and_keeps_newest():
     asyncio.run(scenario())
 
 
+# ── Deferral ──────────────────────────────────────────────────────
+# A multi-step operation (ingest: persist, then correlate, then dismiss the
+# members it grouped) passes through states no client should render. Deferring
+# holds the batch's events until it is finished.
+
+
+def _drain(queue):
+    events = []
+    while not queue.empty():
+        events.append(queue.get_nowait())
+    return events
+
+
+def test_deferred_holds_events_until_the_block_exits():
+    async def scenario():
+        bus = EventBus()
+        bus.bind_loop(asyncio.get_running_loop())
+        queue = bus.subscribe()
+
+        with bus.deferred():
+            bus.publish("alert.created", "a")
+            bus.publish("alert.updated", "a")
+            await asyncio.sleep(0)
+            assert queue.empty(), "events escaped the deferral block"
+
+        await asyncio.sleep(0)
+        assert _drain(queue) == [
+            {"type": "alert.created", "id": "a"},
+            {"type": "alert.updated", "id": "a"},
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_deferred_collapses_duplicate_events():
+    async def scenario():
+        bus = EventBus()
+        bus.bind_loop(asyncio.get_running_loop())
+        queue = bus.subscribe()
+
+        with bus.deferred():
+            # A group's summary is re-projected once per member joining it.
+            for _ in range(5):
+                bus.publish("aggregate.updated", "agg-1")
+            bus.publish("alert.updated", "agg-1")
+
+        await asyncio.sleep(0)
+        assert _drain(queue) == [
+            {"type": "aggregate.updated", "id": "agg-1"},
+            {"type": "alert.updated", "id": "agg-1"},
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_deferred_flushes_even_when_the_block_raises():
+    async def scenario():
+        bus = EventBus()
+        bus.bind_loop(asyncio.get_running_loop())
+        queue = bus.subscribe()
+
+        with pytest.raises(RuntimeError):
+            with bus.deferred():
+                bus.publish("alert.created", "committed-before-the-failure")
+                raise RuntimeError("boom")
+
+        await asyncio.sleep(0)
+        assert _drain(queue) == [
+            {"type": "alert.created", "id": "committed-before-the-failure"}
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_nested_deferral_emits_once_at_the_outermost_exit():
+    async def scenario():
+        bus = EventBus()
+        bus.bind_loop(asyncio.get_running_loop())
+        queue = bus.subscribe()
+
+        with bus.deferred():
+            with bus.deferred():
+                bus.publish("alert.created", "inner")
+            await asyncio.sleep(0)
+            assert queue.empty(), "inner block emitted before the outer exited"
+            bus.publish("alert.updated", "outer")
+
+        await asyncio.sleep(0)
+        assert _drain(queue) == [
+            {"type": "alert.created", "id": "inner"},
+            {"type": "alert.updated", "id": "outer"},
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_publishing_resumes_normally_after_the_block():
+    async def scenario():
+        bus = EventBus()
+        bus.bind_loop(asyncio.get_running_loop())
+        queue = bus.subscribe()
+
+        with bus.deferred():
+            bus.publish("alert.created", "during")
+        # The flush schedules fan-out on the loop; let it run before draining.
+        await asyncio.sleep(0)
+        assert _drain(queue) == [{"type": "alert.created", "id": "during"}]
+
+        bus.publish("alert.updated", "after")
+        await asyncio.sleep(0)
+        assert _drain(queue) == [{"type": "alert.updated", "id": "after"}]
+
+    asyncio.run(scenario())
+
+
+def test_deferral_is_per_thread():
+    """One request's deferral must not swallow another request's events."""
+
+    async def scenario():
+        bus = EventBus()
+        bus.bind_loop(asyncio.get_running_loop())
+        queue = bus.subscribe()
+        released = threading.Event()
+
+        def other_thread():
+            bus.publish("alert.created", "from-other-thread")
+            released.set()
+
+        with bus.deferred():
+            thread = threading.Thread(target=other_thread)
+            thread.start()
+            thread.join()
+            released.wait(timeout=2)
+            await asyncio.sleep(0)
+            # The other thread is not inside this deferral, so its event flows.
+            assert _drain(queue) == [
+                {"type": "alert.created", "id": "from-other-thread"}
+            ]
+            bus.publish("alert.updated", "mine")
+            await asyncio.sleep(0)
+            assert queue.empty()
+
+        await asyncio.sleep(0)
+        assert _drain(queue) == [{"type": "alert.updated", "id": "mine"}]
+
+    asyncio.run(scenario())
+
+
 # ── SSE stream generator ──────────────────────────────────────────
 
 

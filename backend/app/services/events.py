@@ -23,6 +23,8 @@ deployment one worker is the documented setup.
 
 import asyncio
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from app.core.logging import logger
@@ -39,6 +41,10 @@ class EventBus:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._subscribers: set[asyncio.Queue[dict[str, Any]]] = set()
         self._lock = threading.Lock()
+        # Per-thread deferral buffer (see ``deferred``). Thread-local because
+        # each request is handled start-to-finish on one worker thread, so one
+        # request's deferral must not swallow another's events.
+        self._local = threading.local()
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         """Capture the running event loop (called once from app startup)."""
@@ -62,13 +68,61 @@ class EventBus:
         with self._lock:
             self._subscribers.discard(queue)
 
+    @contextmanager
+    def deferred(self) -> Iterator[None]:
+        """
+        Hold this thread's events until the block exits, then emit them once.
+
+        A multi-step operation passes through states no client should ever
+        render. Ingest is the motivating case: each alert is announced as it is
+        persisted, and only *then* does correlation decide whether it belongs
+        in a group and should be dismissed. A client refetching on that first
+        announcement sees members as standalone alerts a few milliseconds
+        before they are folded away — and, because the client throttles
+        refetches, it can sit on that half-built picture for a full second.
+
+        Deferring the whole batch means the first thing a client sees is the
+        finished result. Duplicate ``(type, id)`` pairs collapse, so a storm
+        costs one flush rather than one event per alert per step.
+
+        Events are flushed even when the block raises: whatever committed
+        before the failure still has to reach connected clients.
+        """
+        outer: list[tuple[str, Any]] | None = getattr(self._local, "buffer", None)
+        buffer: list[tuple[str, Any]] = []
+        self._local.buffer = buffer
+        try:
+            yield
+        finally:
+            self._local.buffer = outer
+            if outer is not None:
+                # Nested block — let the outermost one decide when to emit.
+                outer.extend(buffer)
+            else:
+                seen: set[tuple[str, str]] = set()
+                for event_type, entity_id in buffer:
+                    key = (event_type, str(entity_id))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    self._emit(event_type, entity_id)
+
     def publish(self, event_type: str, entity_id: Any = None) -> None:
         """
         Emit an event from any thread.
 
         Call this *after* the transaction commits, so a client refetching in
-        response is guaranteed to see the new state.
+        response is guaranteed to see the new state. Inside a ``deferred``
+        block the event is buffered instead and emitted when the block exits.
         """
+        buffer: list[tuple[str, Any]] | None = getattr(self._local, "buffer", None)
+        if buffer is not None:
+            buffer.append((event_type, entity_id))
+            return
+        self._emit(event_type, entity_id)
+
+    def _emit(self, event_type: str, entity_id: Any = None) -> None:
+        """Hand a single event to the event loop for fan-out."""
         loop = self._loop
         if loop is None or loop.is_closed():
             return
