@@ -16,12 +16,16 @@ Create this rule manually first (UI → Correlation → Create Correlation Rule)
     Time Window      : 30 Minutes
     Actions          : Aggregate Alerts   (leave "Send Email" off - no SMTP needed)
 
-What this script then sends (7 alerts, one batch):
+What this script then sends (7 alerts, one batch). The alerts describe
+different database failures — a pool exhaustion, a lagging replica, a query
+storm — because a realistic group is *related*, not identical; only the four
+fields the rule reads (component, cpu_usage, region, application) are held to
+what the rule needs:
 
-    us-east-1 / payments  x4  (cpu 93/96/91/99, one Critical)  -> aggregate #1, count 4
-    eu-west-1 / payments  x2  (cpu 94/97)                      -> aggregate #2, count 2
-    us-east-1 / payments  x1  (cpu 35)   condition fails       -> stays standalone
-    us-east-1 / checkout  x1  (component=frontend) fails       -> stays standalone
+    us-east-1 / payments  x3  (cpu 97/93/99, one Critical)  -> aggregate #1, count 3
+    eu-west-1 / orders    x2  (cpu 94/96)                   -> aggregate #2, count 2
+    us-east-1 / batch     x1  (cpu 61)  condition fails     -> stays standalone
+    us-east-1 / checkout  x1  (component=frontend) fails    -> stays standalone
 
 Re-running with the same ``--batch`` is a no-op for the aggregates: the same
 fingerprints upsert onto the same alerts, and the engine refuses to count a
@@ -61,39 +65,85 @@ class AlertSpec(NamedTuple):
     """One alert to send, plus what we expect the engine to do with it."""
 
     node: str
+    message: str  # becomes the Grafana `alertname` -> the alert's message
     region: str
     application: str
     component: str
     cpu_usage: str
     severity: str  # grafana label value: info | warning | error | critical
+    impact: str  # annotation; shows on the alert, not used for matching
     expectation: str  # human-readable note printed in the summary
 
 
-# The four fields the rule cares about: component (condition), cpu_usage
-# (condition), region + application (group_by). Everything else is flavour.
+# Only four fields decide the outcome: component and cpu_usage (the rule's
+# conditions) and region + application (its group_by). Messages, nodes,
+# severities and impacts vary freely — a real incident produces related
+# symptoms, not eight copies of one alert.
 ALERT_SPECS: list[AlertSpec] = [
     # ── Group 1 — region=us-east-1|application=payments ────────────────
-    # Four distinct alerts, all matching. The Critical one escalates the
-    # aggregate's severity (merge_severity never de-escalates).
-    AlertSpec("prod-payments-db-1", "us-east-1", "payments", "database", "93",
-              "warning", "aggregate #1"),
-    AlertSpec("prod-payments-db-2", "us-east-1", "payments", "database", "96",
-              "error", "aggregate #1"),
-    AlertSpec("prod-payments-db-3", "us-east-1", "payments", "database", "91",
-              "warning", "aggregate #1"),
-    AlertSpec("prod-payments-db-4", "us-east-1", "payments", "database", "99",
-              "critical", "aggregate #1 (escalates severity to Critical)"),
-    # ── Group 2 — region=eu-west-1|application=payments ────────────────
+    # One database in trouble, seen three different ways. The Critical member
+    # escalates the whole aggregate (merge_severity never de-escalates).
+    AlertSpec(
+        node="prod-payments-db-1",
+        message="Connection pool exhausted on prod-payments-db-1",
+        region="us-east-1", application="payments", component="database",
+        cpu_usage="97", severity="error",
+        impact="Checkout writes queueing; risk of failed transactions",
+        expectation="aggregate #1",
+    ),
+    AlertSpec(
+        node="prod-payments-db-2",
+        message="Replication lag 45s behind primary on prod-payments-db-2",
+        region="us-east-1", application="payments", component="database",
+        cpu_usage="93", severity="warning",
+        impact="Read replicas serving stale balances",
+        expectation="aggregate #1",
+    ),
+    AlertSpec(
+        node="prod-payments-db-3",
+        message="Slow query storm on prod-payments-db-3",
+        region="us-east-1", application="payments", component="database",
+        cpu_usage="99", severity="critical",
+        impact="Settlement batch stalled; p99 latency above SLO",
+        expectation="aggregate #1 (escalates severity to Critical)",
+    ),
+    # ── Group 2 — region=eu-west-1|application=orders ──────────────────
     # Same rule, different group_by values -> a second, separate aggregate.
-    AlertSpec("eu-payments-db-1", "eu-west-1", "payments", "database", "94",
-              "warning", "aggregate #2"),
-    AlertSpec("eu-payments-db-2", "eu-west-1", "payments", "database", "97",
-              "error", "aggregate #2"),
+    AlertSpec(
+        node="eu-orders-db-1",
+        message="Deadlock detected on eu-orders-db-1",
+        region="eu-west-1", application="orders", component="database",
+        cpu_usage="94", severity="error",
+        impact="Order placement retrying; duplicate submissions possible",
+        expectation="aggregate #2",
+    ),
+    AlertSpec(
+        node="eu-orders-db-2",
+        message="WAL volume 91% full on eu-orders-db-2",
+        region="eu-west-1", application="orders", component="database",
+        cpu_usage="96", severity="error",
+        impact="Writes will stop when the volume fills",
+        expectation="aggregate #2",
+    ),
     # ── Control alerts — must NOT be aggregated ────────────────────────
-    AlertSpec("prod-payments-db-9", "us-east-1", "payments", "database", "35",
-              "info", "standalone (cpu_usage <= 90)"),
-    AlertSpec("prod-checkout-web-1", "us-east-1", "checkout", "frontend", "98",
-              "error", "standalone (component != database)"),
+    # Each fails exactly one condition, so a missing group is traceable to a
+    # specific clause of the rule rather than to "correlation is broken".
+    AlertSpec(
+        node="batch-01",
+        message="Disk usage 61% on batch-01",
+        region="us-east-1", application="batch", component="database",
+        cpu_usage="61", severity="info",
+        impact="Nightly export has room for two more runs",
+        expectation="standalone (cpu_usage <= 90)",
+    ),
+    AlertSpec(
+        node="prod-checkout-web-1",
+        message="Checkout latency p99 above 2s on prod-checkout-web-1",
+        region="us-east-1", application="checkout", component="frontend",
+        cpu_usage="98", severity="error",
+        impact="Cart abandonment climbing",
+        expectation="standalone (component != database)",
+    ),
 ]
 
 EXPECTED_AGGREGATED = sum(
@@ -105,14 +155,21 @@ EXPECTED_AGGREGATED = sum(
 # alert ids instead, so a different rule winning the alert is visible rather
 # than looking like "nothing aggregated".
 EXPECTED_GROUP_KEYS = {
-    "region=us-east-1|application=payments": 4,
-    "region=eu-west-1|application=payments": 2,
+    "region=us-east-1|application=payments": 3,
+    "region=eu-west-1|application=orders": 2,
 }
+
+
+# Namespaces this script's fingerprints. Bump it whenever the alert *content*
+# changes: ingest upserts by (source_id, external_id) and never rewrites an
+# existing alert's message, so reusing a fingerprint would resurrect the old
+# text — and an old member alert is already Dismissed, which the engine skips.
+FINGERPRINT_PREFIX = "seed-db-incident"
 
 
 def fingerprint(spec: AlertSpec, batch: str) -> str:
     """Stable per-node fingerprint — becomes the alert's external_id."""
-    return f"seed-correlation-{batch}-{spec.node}"
+    return f"{FINGERPRINT_PREFIX}-{batch}-{spec.node}"
 
 
 def login(client: httpx.Client, username: str, password: str) -> str:
@@ -188,7 +245,7 @@ def grafana_alert(spec: AlertSpec, batch: str) -> dict[str, Any]:
         "status": "firing",
         "fingerprint": fingerprint(spec, batch),
         "labels": {
-            "alertname": f"High CPU on {spec.node}",
+            "alertname": spec.message,
             "severity": spec.severity,
             "app": spec.application,
             "component": spec.component,
@@ -200,7 +257,7 @@ def grafana_alert(spec: AlertSpec, batch: str) -> dict[str, Any]:
         },
         "annotations": {
             "summary": f"CPU at {spec.cpu_usage}% on {spec.node}",
-            "impact": f"{spec.application} requests degrading in {spec.region}",
+            "impact": spec.impact,
         },
     }
 
@@ -326,10 +383,11 @@ def seed(args: argparse.Namespace) -> int:
 
         print(f"==> Ingesting {len(ALERT_SPECS)} alerts (batch={args.batch})")
         for spec in ALERT_SPECS:
+            print(f"    {spec.message}")
             print(
-                f"    {spec.node:20} region={spec.region:10} "
-                f"app={spec.application:9} component={spec.component:9} "
-                f"cpu={spec.cpu_usage:>3}  -> {spec.expectation}"
+                f"      region={spec.region:10} app={spec.application:9} "
+                f"component={spec.component:9} cpu={spec.cpu_usage:>3}  "
+                f"-> {spec.expectation}"
             )
 
         payload = {
