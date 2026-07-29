@@ -26,6 +26,9 @@ class AggregatedAlertRead(BaseModel):
     count: int
     alert_ids: list[str] = Field(default_factory=list)
     close_reason: str | None = None
+    # The alerts-feed row mirroring this aggregate, so a client holding an
+    # aggregate can jump straight to what the operator sees in the feed.
+    summary_alert_id: uuid.UUID | None = None
     first_seen: datetime
     last_seen: datetime
     window_ends_at: datetime

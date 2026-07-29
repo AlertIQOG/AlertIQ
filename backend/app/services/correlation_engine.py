@@ -259,6 +259,96 @@ def apply_member(aggregate: "AggregatedAlert", alert: Alert, now: datetime) -> b
     return True
 
 
+# ── Feed-visible summary alert ────────────────────────────────────────
+# An ``AggregatedAlert`` lives in its own table, which the alerts feed does not
+# read — so a correlated group was invisible in the UI. Each aggregate is now
+# mirrored by a summary ``Alert`` row carrying the very same
+# ``_is_aggregated`` / ``_child_ids`` / ``_child_count`` contract that manual
+# grouping (``AlertService.aggregate``) writes, so the feed, the AGG badge and
+# ``GET /alerts/{id}/children`` treat both kinds of group identically.
+#
+# The aggregate remains the source of truth; the summary is a projection of it.
+
+# Marks a summary row's ``external_id``. The aggregate's UUID makes it globally
+# unique, so it can never collide with a provider fingerprint.
+SUMMARY_EXTERNAL_ID_PREFIX = "correlation:"
+
+
+def summary_external_id(aggregate: "AggregatedAlert") -> str:
+    """Deterministic ``external_id`` for an aggregate's summary alert."""
+    return f"{SUMMARY_EXTERNAL_ID_PREFIX}{aggregate.id}"
+
+
+def summary_message(aggregate: "AggregatedAlert") -> str:
+    """Headline for the summary row, mirroring the manual grouping's wording."""
+    return (
+        f"Aggregated: {aggregate.count} alerts — "
+        f"{aggregate.rule_name} ({aggregate.group_key})"
+    )
+
+
+def summary_extra_fields(
+    aggregate: "AggregatedAlert", member: Alert
+) -> dict[str, Any]:
+    """
+    Build the summary row's ``extra_fields``.
+
+    The three underscore-prefixed keys are the contract the frontend reads
+    (``alertsApi.normalizeAlert``); ``_correlation`` adds the provenance that
+    tells an engine-produced group apart from a hand-picked one.
+    """
+    extra: dict[str, Any] = {
+        "_is_aggregated": True,
+        "_child_ids": list(aggregate.alert_ids),
+        "_child_count": aggregate.count,
+        "_correlation": {
+            "aggregate_id": str(aggregate.id),
+            "rule_id": str(aggregate.rule_id),
+            "rule_name": aggregate.rule_name,
+            "group_key": aggregate.group_key,
+            "group_values": aggregate.group_values,
+        },
+    }
+    # Carry the provider tag over so the feed's `source` filter still matches
+    # the summary the same way it matches its members.
+    source = (member.extra_fields or {}).get("source")
+    if source:
+        extra["source"] = source
+    return extra
+
+
+def build_summary_alert(aggregate: "AggregatedAlert", member: Alert) -> Alert:
+    """Construct the (unpersisted) summary alert for a freshly-opened aggregate."""
+    return Alert(
+        source_id=member.source_id,
+        external_id=summary_external_id(aggregate),
+        message=summary_message(aggregate),
+        application=member.application,
+        component=member.component,
+        region=member.region,
+        severity=aggregate.severity,
+        status=AlertStatus.OPEN,
+        extra_fields=summary_extra_fields(aggregate, member),
+    )
+
+
+def apply_summary_alert(
+    summary: Alert, aggregate: "AggregatedAlert", member: Alert
+) -> None:
+    """
+    Re-project an aggregate onto its existing summary row, mutating in place.
+
+    ``extra_fields`` is reassigned rather than mutated so SQLAlchemy detects the
+    JSONB change and flushes it (same reason as ``apply_member``'s list copy).
+    """
+    summary.message = summary_message(aggregate)
+    summary.severity = aggregate.severity
+    summary.extra_fields = {
+        **(summary.extra_fields or {}),
+        **summary_extra_fields(aggregate, member),
+    }
+
+
 # ── Orchestration ─────────────────────────────────────────────────────
 
 

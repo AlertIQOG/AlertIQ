@@ -6,8 +6,15 @@ aggregate is built and mutated) lives in the pure helpers
 ``build_aggregate`` / ``apply_member`` in
 :mod:`app.services.correlation_engine`.  Here we only run queries and flush the
 mutations those helpers produce.
+
+It also maintains each aggregate's **summary alert** — an ordinary ``alerts``
+row flagged ``_is_aggregated`` that mirrors the aggregate into the alerts feed,
+exactly like a hand-picked group made through ``AlertService.aggregate``. The
+aggregate stays the source of truth; the summary is a projection kept in step
+on every new member.
 """
 
+import logging
 import uuid
 from datetime import datetime
 from typing import Any
@@ -15,11 +22,19 @@ from typing import Any
 from sqlmodel import Session, select
 
 from app.models.aggregated_alert import AggregatedAlert, AggregatedAlertStatus
-from app.models.alert import Alert
+from app.models.alert import Alert, AlertStatus
 from app.models.correlation_rule import CorrelationRule
 from app.services.base import CRUDBase
-from app.services.correlation_engine import apply_member, build_aggregate
+from app.services.correlation_engine import (
+    apply_member,
+    apply_summary_alert,
+    build_aggregate,
+    build_summary_alert,
+    summary_external_id,
+)
 from app.services.events import event_bus
+
+logger = logging.getLogger("alertiq.correlation")
 
 
 class AggregatedAlertService(CRUDBase[AggregatedAlert]):
@@ -73,6 +88,7 @@ class AggregatedAlertService(CRUDBase[AggregatedAlert]):
         session.add(aggregate)
         session.commit()
         session.refresh(aggregate)
+        self.sync_summary(session, aggregate=aggregate, member=alert)
         event_bus.publish("aggregate.created", aggregate.id)
         return aggregate
 
@@ -88,14 +104,92 @@ class AggregatedAlertService(CRUDBase[AggregatedAlert]):
         Fold ``alert`` into an existing aggregate and persist the change.
 
         Duplicate re-fires are handled by ``apply_member`` (severity/last_seen
-        are refreshed but ``count`` is not incremented).
+        are refreshed but ``count`` is not incremented) — and skip the summary
+        re-projection entirely, since nothing about the group changed.
         """
-        apply_member(aggregate, alert, now)
+        is_new_member = apply_member(aggregate, alert, now)
         session.add(aggregate)
         session.commit()
         session.refresh(aggregate)
+        if is_new_member:
+            self.sync_summary(session, aggregate=aggregate, member=alert)
         event_bus.publish("aggregate.updated", aggregate.id)
         return aggregate
+
+    # ── Summary alert (feed projection) ───────────────────────────────
+
+    def find_summary(
+        self, session: Session, *, aggregate: AggregatedAlert
+    ) -> Alert | None:
+        """
+        Return the aggregate's summary alert, or ``None`` if it has none.
+
+        Looks up the recorded id first, then falls back to the deterministic
+        ``external_id``. The fallback matters when a previous run recorded the
+        summary but failed before committing ``summary_alert_id`` — without it
+        we would insert a second summary for the same aggregate.
+        """
+        if aggregate.summary_alert_id is not None:
+            summary = session.get(Alert, aggregate.summary_alert_id)
+            if summary is not None:
+                return summary
+
+        statement = select(Alert).where(
+            Alert.external_id == summary_external_id(aggregate)
+        )
+        return session.exec(statement).first()
+
+    def sync_summary(
+        self,
+        session: Session,
+        *,
+        aggregate: AggregatedAlert,
+        member: Alert,
+    ) -> Alert | None:
+        """
+        Create or refresh the aggregate's summary alert and dismiss ``member``.
+
+        Dismissing members mirrors ``AlertService.aggregate``: the group speaks
+        for its members, so they stop competing for attention in the feed while
+        staying reachable through ``GET /alerts/{id}/children``.
+
+        Best-effort — a failure here must never cost us the aggregate itself,
+        which is already committed by the time this runs.
+        """
+        try:
+            summary = self.find_summary(session, aggregate=aggregate)
+            created = summary is None
+
+            if summary is None:
+                summary = build_summary_alert(aggregate, member)
+                session.add(summary)
+            else:
+                apply_summary_alert(summary, aggregate, member)
+                session.add(summary)
+
+            member.status = AlertStatus.DISMISSED
+            session.add(member)
+            session.commit()
+            session.refresh(summary)
+
+            if aggregate.summary_alert_id != summary.id:
+                aggregate.summary_alert_id = summary.id
+                session.add(aggregate)
+                session.commit()
+
+            event_bus.publish(
+                "alert.created" if created else "alert.updated", summary.id
+            )
+            event_bus.publish("alert.updated", member.id)
+            return summary
+        except Exception:  # noqa: BLE001 — the aggregate must survive this
+            session.rollback()
+            logger.exception(
+                "Summary alert sync failed — aggregate=%s member=%s",
+                aggregate.id,
+                member.id,
+            )
+            return None
 
     def close(
         self,

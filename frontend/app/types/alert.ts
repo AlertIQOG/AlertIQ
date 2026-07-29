@@ -28,6 +28,9 @@ export interface Alert {
   updated_at?: string;
   isAggregated?: boolean;
   childCount?: number;
+  // Name of the correlation rule that built this group, when the engine made
+  // it. Absent on groups a user assembled by hand.
+  correlationRule?: string;
   // Set when an unresolved incident is already linked to this alert.
   open_incident_id?: string | null;
 }

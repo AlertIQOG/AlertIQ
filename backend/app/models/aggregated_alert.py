@@ -74,6 +74,13 @@ class AggregatedAlert(SQLModel, table=True):
     # Populated when the aggregate is closed, e.g. ``"window_expired"``.
     close_reason: str | None = Field(default=None)
 
+    # The ``alerts`` row that mirrors this aggregate into the alerts feed (see
+    # the summary helpers in ``app.services.correlation_engine``). Deliberately
+    # *not* a foreign key: deleting the summary alert from the feed must not be
+    # blocked by this reference — the service treats a dangling id as "missing"
+    # and re-projects a fresh summary.
+    summary_alert_id: uuid.UUID | None = Field(default=None, index=True)
+
     # Window bookkeeping (all timezone-aware).
     first_seen: datetime = Field(
         sa_column=Column(DateTime(timezone=True), nullable=False)
