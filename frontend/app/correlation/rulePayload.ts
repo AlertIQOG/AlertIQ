@@ -13,12 +13,18 @@
 // Region is a normalized top-level alert field; a safe default grouping key.
 export const DEFAULT_GROUP_BY = ["region"];
 
-// Sentinel option meaning "don't constrain the region" (omit it from scope).
+// Sentinel meaning "don't constrain this key" — the key is omitted from scope,
+// and an absent key is what the engine treats as match-all.
 export const ANY_REGION = "Any";
+export const ANY_SOURCE = "Any";
+
+// Provider names the normalizers stamp onto `extra_fields.source`. "Any" leaves
+// the source unconstrained, so a rule cannot be silently unmatchable just
+// because the form defaulted to a provider you don't ingest from.
+export const SOURCE_OPTIONS = [ANY_SOURCE, "Prometheus", "Grafana"];
 
 export interface ScopeInput {
-  // Provider name ("Prometheus" | "Grafana"); the normalizer stamps this onto
-  // each alert's extra_fields so it resolves.
+  // Provider name, or ANY_SOURCE to leave the source unconstrained.
   source?: string;
   // A region value, or ANY_REGION to leave the region unconstrained.
   region?: string;
@@ -26,17 +32,110 @@ export interface ScopeInput {
 
 /**
  * Build a scope dict containing only keys the engine can resolve on an alert.
- * Omits the region when it is unset or ANY_REGION (→ broader match).
+ *
+ * Every key in `scope` must match for a rule to apply, so a key the engine
+ * cannot resolve makes the rule permanently unmatchable. Only scalar values
+ * under resolvable names are emitted; anything unconstrained is omitted.
  */
 export function buildScope({ source, region }: ScopeInput): Record<string, string> {
   const scope: Record<string, string> = {};
-  if (source) {
+  if (source && source !== ANY_SOURCE) {
     scope.source = source;
   }
   if (region && region !== ANY_REGION) {
     scope.region = region;
   }
   return scope;
+}
+
+// ── Operators ───────────────────────────────────────────────────────────
+// The form shows labels; the API takes snake_case ids. Both directions live
+// here so the create and edit pages cannot drift apart on them.
+
+const OPERATORS: ReadonlyArray<{ label: string; id: string }> = [
+  { label: "Greater than", id: "greater_than" },
+  { label: "Less than", id: "less_than" },
+  { label: "Equals", id: "equals" },
+  { label: "Not equals", id: "not_equals" },
+  { label: "Contains", id: "contains" },
+  { label: "Greater or equal", id: "greater_or_equal" },
+  { label: "Less or equal", id: "less_or_equal" },
+  { label: "Is Present", id: "is_present" },
+];
+
+// Dropdown order, and the single source of truth for which are offered.
+export const OPERATOR_LABELS = OPERATORS.map((o) => o.label);
+
+// Operators that ignore the value box entirely (see evaluate_condition).
+export const VALUELESS_OPERATORS = ["Is Present"];
+
+export function mapOperator(label: string): string {
+  return OPERATORS.find((o) => o.label === label)?.id ?? "equals";
+}
+
+export function mapOperatorToLabel(id: string): string {
+  return OPERATORS.find((o) => o.id === id)?.label ?? "Equals";
+}
+
+// ── Time window ─────────────────────────────────────────────────────────
+// Presets plus a custom escape hatch, converted in both directions so the two
+// pages agree on what "1 Hour" or an out-of-preset value means.
+
+export const TIME_WINDOW_PRESETS: ReadonlyArray<{ label: string; minutes: number }> = [
+  { label: "5 Minutes", minutes: 5 },
+  { label: "10 Minutes", minutes: 10 },
+  { label: "30 Minutes", minutes: 30 },
+  { label: "1 Hour", minutes: 60 },
+];
+
+export const CUSTOM_TIME_WINDOW = "Other";
+export const TIME_WINDOW_OPTIONS = [
+  ...TIME_WINDOW_PRESETS.map((p) => p.label),
+  CUSTOM_TIME_WINDOW,
+];
+export const TIME_UNITS = ["Seconds", "Minutes", "Hours", "Days"];
+
+export interface TimeWindowState {
+  window: string;
+  customValue: string;
+  customUnit: string;
+}
+
+/** Convert the form's time-window state into the API's minutes. */
+export function timeWindowToMinutes({
+  window,
+  customValue,
+  customUnit,
+}: TimeWindowState): number {
+  const preset = TIME_WINDOW_PRESETS.find((p) => p.label === window);
+  if (preset) {
+    return preset.minutes;
+  }
+
+  const value = Number(customValue);
+  switch (customUnit) {
+    case "Seconds":
+      return Math.ceil(value / 60);
+    case "Hours":
+      return value * 60;
+    case "Days":
+      return value * 24 * 60;
+    default:
+      return value;
+  }
+}
+
+/** Inverse of `timeWindowToMinutes`, for pre-filling the edit form. */
+export function minutesToTimeWindow(minutes: number): TimeWindowState {
+  const preset = TIME_WINDOW_PRESETS.find((p) => p.minutes === minutes);
+  if (preset) {
+    return { window: preset.label, customValue: "", customUnit: "Minutes" };
+  }
+  return {
+    window: CUSTOM_TIME_WINDOW,
+    customValue: String(minutes),
+    customUnit: "Minutes",
+  };
 }
 
 /**
