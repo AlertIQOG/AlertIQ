@@ -17,15 +17,19 @@ Create this rule manually first (UI → Correlation → Create Correlation Rule)
     Actions          : Aggregate Alerts   (leave "Send Email" off - no SMTP needed)
 
 What this script then sends (7 alerts, one batch). The alerts describe
-different database failures — a pool exhaustion, a lagging replica, a query
-storm — because a realistic group is *related*, not identical; only the four
-fields the rule reads (component, cpu_usage, region, application) are held to
-what the rule needs:
+different database symptoms — lock waits, autovacuum falling behind, a cold
+buffer cache — because a realistic group is *related*, not identical; only the
+four fields the rule reads (component, cpu_usage, region, application) are held
+to what the rule needs:
 
-    us-east-1 / payments  x3  (cpu 97/93/99, one Critical)  -> aggregate #1, count 3
-    eu-west-1 / orders    x2  (cpu 94/96)                   -> aggregate #2, count 2
-    us-east-1 / batch     x1  (cpu 61)  condition fails     -> stays standalone
-    us-east-1 / checkout  x1  (component=frontend) fails    -> stays standalone
+    us-east-1 / auth       x3  (cpu 95/92/98, one Critical) -> aggregate #1, count 3
+    ap-south-1 / inventory x2  (cpu 91/97)                  -> aggregate #2, count 2
+    us-east-1 / reporting  x1  (cpu 44)  condition fails    -> stays standalone
+    us-east-1 / search     x1  (component=api) fails        -> stays standalone
+
+To send a different set, edit ``ALERT_SPECS`` and bump ``FINGERPRINT_PREFIX``
+(see the note there). Alert headlines are composed from each spec's ``node``,
+so renaming a node cannot leave a stale name behind in its message.
 
 Re-running with the same ``--batch`` is a no-op for the aggregates: the same
 fingerprints upsert onto the same alerts, and the engine refuses to count a
@@ -65,7 +69,7 @@ class AlertSpec(NamedTuple):
     """One alert to send, plus what we expect the engine to do with it."""
 
     node: str
-    message: str  # becomes the Grafana `alertname` -> the alert's message
+    symptom: str  # what went wrong; the node is appended to form the headline
     region: str
     application: str
     component: str
@@ -74,74 +78,83 @@ class AlertSpec(NamedTuple):
     impact: str  # annotation; shows on the alert, not used for matching
     expectation: str  # human-readable note printed in the summary
 
+    @property
+    def message(self) -> str:
+        """Headline sent as the Grafana ``alertname``.
+
+        Composed rather than stored so renaming a node cannot leave a stale
+        node name behind in its own alert text.
+        """
+        return f"{self.symptom} on {self.node}"
+
 
 # Only four fields decide the outcome: component and cpu_usage (the rule's
 # conditions) and region + application (its group_by). Messages, nodes,
 # severities and impacts vary freely — a real incident produces related
 # symptoms, not eight copies of one alert.
 ALERT_SPECS: list[AlertSpec] = [
-    # ── Group 1 — region=us-east-1|application=payments ────────────────
-    # One database in trouble, seen three different ways. The Critical member
-    # escalates the whole aggregate (merge_severity never de-escalates).
+    # ── Group 1 — region=us-east-1|application=auth ────────────────────
+    # One database under pressure, seen three different ways. The Critical
+    # member escalates the whole aggregate (merge_severity never de-escalates).
     AlertSpec(
-        node="prod-payments-db-1",
-        message="Connection pool exhausted on prod-payments-db-1",
-        region="us-east-1", application="payments", component="database",
-        cpu_usage="97", severity="error",
-        impact="Checkout writes queueing; risk of failed transactions",
+        node="prod-auth-db-1",
+        symptom="Sessions table lock wait timeout",
+        region="us-east-1", application="auth", component="database",
+        cpu_usage="95", severity="error",
+        impact="Sign-ins timing out; users bounced to the login page",
         expectation="aggregate #1",
     ),
     AlertSpec(
-        node="prod-payments-db-2",
-        message="Replication lag 45s behind primary on prod-payments-db-2",
-        region="us-east-1", application="payments", component="database",
-        cpu_usage="93", severity="warning",
-        impact="Read replicas serving stale balances",
+        node="prod-auth-db-2",
+        symptom="Autovacuum falling behind, 1.2M dead tuples",
+        region="us-east-1", application="auth", component="database",
+        cpu_usage="92", severity="warning",
+        impact="Table bloat growing; queries degrading hour over hour",
         expectation="aggregate #1",
     ),
     AlertSpec(
-        node="prod-payments-db-3",
-        message="Slow query storm on prod-payments-db-3",
-        region="us-east-1", application="payments", component="database",
-        cpu_usage="99", severity="critical",
-        impact="Settlement batch stalled; p99 latency above SLO",
+        node="prod-auth-db-3",
+        symptom="Buffer cache hit ratio down to 71%",
+        region="us-east-1", application="auth", component="database",
+        cpu_usage="98", severity="critical",
+        impact="Token validation reading from disk; auth p99 above SLO",
         expectation="aggregate #1 (escalates severity to Critical)",
     ),
-    # ── Group 2 — region=eu-west-1|application=orders ──────────────────
+    # ── Group 2 — region=ap-south-1|application=inventory ──────────────
     # Same rule, different group_by values -> a second, separate aggregate.
     AlertSpec(
-        node="eu-orders-db-1",
-        message="Deadlock detected on eu-orders-db-1",
-        region="eu-west-1", application="orders", component="database",
-        cpu_usage="94", severity="error",
-        impact="Order placement retrying; duplicate submissions possible",
+        node="ap-inventory-db-1",
+        symptom="stock_levels index bloat at 340%",
+        region="ap-south-1", application="inventory", component="database",
+        cpu_usage="91", severity="warning",
+        impact="Stock lookups scanning; oversell risk during peak",
         expectation="aggregate #2",
     ),
     AlertSpec(
-        node="eu-orders-db-2",
-        message="WAL volume 91% full on eu-orders-db-2",
-        region="eu-west-1", application="orders", component="database",
-        cpu_usage="96", severity="error",
-        impact="Writes will stop when the volume fills",
+        node="ap-inventory-db-2",
+        symptom="Checkpoint taking 90s, IO saturated",
+        region="ap-south-1", application="inventory", component="database",
+        cpu_usage="97", severity="error",
+        impact="Warehouse sync backing up behind write stalls",
         expectation="aggregate #2",
     ),
     # ── Control alerts — must NOT be aggregated ────────────────────────
     # Each fails exactly one condition, so a missing group is traceable to a
     # specific clause of the rule rather than to "correlation is broken".
     AlertSpec(
-        node="batch-01",
-        message="Disk usage 61% on batch-01",
-        region="us-east-1", application="batch", component="database",
-        cpu_usage="61", severity="info",
-        impact="Nightly export has room for two more runs",
+        node="reporting-db-1",
+        symptom="Nightly aggregation job running long",
+        region="us-east-1", application="reporting", component="database",
+        cpu_usage="44", severity="info",
+        impact="Morning dashboards may lag by an hour",
         expectation="standalone (cpu_usage <= 90)",
     ),
     AlertSpec(
-        node="prod-checkout-web-1",
-        message="Checkout latency p99 above 2s on prod-checkout-web-1",
-        region="us-east-1", application="checkout", component="frontend",
-        cpu_usage="98", severity="error",
-        impact="Cart abandonment climbing",
+        node="prod-search-api-1",
+        symptom="Search p95 above 800ms",
+        region="us-east-1", application="search", component="api",
+        cpu_usage="96", severity="error",
+        impact="Product search feels sluggish; conversion dipping",
         expectation="standalone (component != database)",
     ),
 ]
@@ -155,8 +168,8 @@ EXPECTED_AGGREGATED = sum(
 # alert ids instead, so a different rule winning the alert is visible rather
 # than looking like "nothing aggregated".
 EXPECTED_GROUP_KEYS = {
-    "region=us-east-1|application=payments": 3,
-    "region=eu-west-1|application=orders": 2,
+    "region=us-east-1|application=auth": 3,
+    "region=ap-south-1|application=inventory": 2,
 }
 
 
@@ -164,7 +177,7 @@ EXPECTED_GROUP_KEYS = {
 # changes: ingest upserts by (source_id, external_id) and never rewrites an
 # existing alert's message, so reusing a fingerprint would resurrect the old
 # text — and an old member alert is already Dismissed, which the engine skips.
-FINGERPRINT_PREFIX = "seed-db-incident"
+FINGERPRINT_PREFIX = "seed-db-pressure"
 
 
 def fingerprint(spec: AlertSpec, batch: str) -> str:
