@@ -5,6 +5,21 @@ import Link from "next/link";
 import CorrelationRulesTable from "./components/CorrelationRulesTable";
 import { CorrelationRule } from "../types/correlation";
 import { apiFetch } from "../services/apiClient";
+import type { CorrelationActionId } from "./actions";
+import { ANY_REGION } from "./rulePayload";
+
+// The rule as the API returns it (CorrelationRuleRead).
+type ApiCorrelationRule = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  scope?: { source?: string; region?: string };
+  conditions?: { field?: string; operator?: string; value?: unknown }[];
+  time_window_minutes: number;
+  group_by?: string[];
+  actions?: CorrelationActionId[];
+  email_recipients?: string[];
+};
 
 export default function CorrelationRulesPage() {
   const [rules, setRules] = useState<CorrelationRule[]>([]);
@@ -23,36 +38,33 @@ export default function CorrelationRulesPage() {
 
         const data = await response.json();
 
-        const mappedRules: CorrelationRule[] = data.map((rule: any) => ({
+        const mappedRules: CorrelationRule[] = (
+          data as ApiCorrelationRule[]
+        ).map((rule) => ({
           id: rule.id,
           name: rule.name,
           isActive: rule.enabled,
           logicSummary: {
-            source: rule.scope?.source || "N/A",
-            region: rule.scope?.region || "Any",
+            // An absent key means unconstrained, which the engine treats as
+            // match-all — not "missing data".
+            source: rule.scope?.source || ANY_REGION,
+            region: rule.scope?.region || ANY_REGION,
             condition:
               rule.conditions?.[0]
                 ? `${rule.conditions[0].field} ${rule.conditions[0].operator} ${rule.conditions[0].value ?? ""}`
                 : "No conditions",
           },
-          conditions: (rule.conditions || []).map(
-            (
-              condition: {
-                id?: string;
-                metric?: string;
-                field?: string;
-                operator?: string;
-                value?: unknown;
-              },
-              index: number,
-            ) => ({
-              id: condition.id || String(index),
-              metric: condition.metric || condition.field || "Unknown field",
-              operator: condition.operator || "",
-              value: String(condition.value ?? ""),
-            }),
-          ),
+          conditions: (rule.conditions || []).map((condition, index) => ({
+            id: String(index),
+            metric: condition.field || "Unknown field",
+            operator: condition.operator || "",
+            value: String(condition.value ?? ""),
+          })),
           timeWindow: `${rule.time_window_minutes} mins`,
+          // The expanded row renders both of these; without them every rule
+          // read "No actions configured" regardless of what it was saved with.
+          actions: rule.actions ?? [],
+          email_recipients: rule.email_recipients ?? [],
           lastTriggered: "Never",
         }));
 

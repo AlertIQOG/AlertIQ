@@ -7,7 +7,8 @@ it stays a **standalone alert** or gets folded into an **Aggregated Alert**.
   · [`app/services/aggregated_alert.py`](../app/services/aggregated_alert.py) (persistence)
 - **Model:** [`app/models/aggregated_alert.py`](../app/models/aggregated_alert.py)
 - **Entry point:** [`app/api/v1/ingest.py`](../app/api/v1/ingest.py) → `_persist_and_correlate`
-- **Read API:** `GET /api/v1/aggregated-alerts`
+- **Read API:** `GET /api/v1/aggregated-alerts` — and the group also appears in
+  the alerts feed as a **summary alert** (see §5)
 
 ---
 
@@ -21,11 +22,12 @@ in real time as alerts are ingested, collapsing related alerts into one
 Aggregated Alert that carries a running `count`, the highest `severity` seen,
 and a `last_seen` timestamp.
 
-> This is distinct from the **manual** aggregation in `AlertService.aggregate`,
-> where a user hand-picks alerts in the feed. That path collapses alerts into a
-> summary `Alert` row flagged with `extra_fields._is_aggregated`. The engine
-> described here is **automatic** and writes to the dedicated
-> `aggregated_alerts` table.
+> The **manual** aggregation in `AlertService.aggregate` — where a user
+> hand-picks alerts in the feed — remains a separate entry point, but both paths
+> now end at the same thing the operator sees: a summary `Alert` row flagged
+> `extra_fields._is_aggregated`. The engine additionally keeps its own
+> `aggregated_alerts` row, which stays the source of truth for the group (rule,
+> window, membership); the feed row is a projection of it (§5).
 
 ---
 
@@ -144,7 +146,44 @@ next matching alert opens a brand-new aggregate.
 
 ---
 
-## 5. Edge cases (explicitly handled)
+## 5. The summary alert (how a group reaches the feed)
+
+`aggregated_alerts` is a table the alerts feed never queries, so on its own a
+correlated group was invisible to operators. Every aggregate is therefore
+mirrored by an ordinary `alerts` row — its **summary alert** — carrying exactly
+the contract a hand-picked group already used, so the feed, the `AGG` badge and
+`GET /alerts/{id}/children` treat both kinds of group identically.
+
+```jsonc
+// the summary row's extra_fields
+{
+  "_is_aggregated": true,
+  "_child_ids": ["<member-uuid>", "..."],   // == aggregate.alert_ids
+  "_child_count": 4,                         // == aggregate.count
+  "_correlation": {                          // provenance — engine groups only
+    "aggregate_id": "...", "rule_id": "...", "rule_name": "DB CPU saturation",
+    "group_key": "region=us-east-1|application=payments",
+    "group_values": { "region": "us-east-1", "application": "payments" }
+  },
+  "source": "Grafana"                        // kept so the feed's source filter matches
+}
+```
+
+| Aspect | Behaviour |
+| --- | --- |
+| **Identity** | `external_id = "correlation:<aggregate_id>"` — the UUID makes it globally unique, so it can never collide with a provider fingerprint on `(source_id, external_id)`. |
+| **Link back** | `aggregated_alerts.summary_alert_id` records the row; it is deliberately *not* a foreign key, so deleting the alert from the feed is never blocked. A dangling id is treated as "missing" and a fresh summary is projected. |
+| **Members** | Set to `Dismissed`, exactly as manual grouping does — the group speaks for them, and they stay reachable via `GET /alerts/{id}/children`. |
+| **Kept in step** | On each *new* member: `message` (count), `severity` (escalate-only) and the child list are re-projected. A duplicate re-fire changes nothing, so the projection is skipped entirely. |
+| **Live updates** | Publishes `alert.created` / `alert.updated`, so the feed's SSE subscription refreshes without a reload. |
+| **Failure isolation** | Best-effort: the aggregate is already committed when the projection runs, so a failure here is logged and rolled back without costing the aggregate. |
+
+Pure helpers `build_summary_alert` / `apply_summary_alert` shape the row;
+`AggregatedAlertService.sync_summary` persists it.
+
+---
+
+## 6. Edge cases (explicitly handled)
 
 | Edge case | Handling |
 | --- | --- |
@@ -157,7 +196,7 @@ next matching alert opens a brand-new aggregate.
 
 ---
 
-## 6. Where it plugs in
+## 7. Where it plugs in
 
 ```mermaid
 sequenceDiagram
@@ -182,7 +221,7 @@ sequenceDiagram
 
 ---
 
-## 7. Design notes
+## 8. Design notes
 
 - **Pure decision core.** All decision logic (`resolve_field`, `rule_matches`,
   `compute_group`, `merge_severity`, `is_window_expired`, `build_aggregate`,

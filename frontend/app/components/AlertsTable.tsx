@@ -93,7 +93,14 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
         <>
           <div className="text-sm font-medium text-white flex items-center gap-2 min-w-0">
             {alert.isAggregated && (
-              <span className="inline-flex items-center gap-1 text-[9px] bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-1.5 py-0.5 rounded font-bold shrink-0">
+              <span
+                className="inline-flex items-center gap-1 text-[9px] bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-1.5 py-0.5 rounded font-bold shrink-0"
+                title={
+                  alert.correlationRule
+                    ? `Correlation rule: ${alert.correlationRule}`
+                    : 'Manually grouped alerts'
+                }
+              >
                 <i className="fas fa-layer-group"></i> AGG · {alert.childCount}
               </span>
             )}

@@ -43,6 +43,19 @@ with engine.begin() as conn:
             "ADD COLUMN IF NOT EXISTS linked_alert_ids jsonb NOT NULL DEFAULT '[]'::jsonb"
         )
     )
+    # Links an aggregate to the alerts-feed row that mirrors it.
+    conn.execute(
+        text(
+            "ALTER TABLE aggregated_alerts "
+            "ADD COLUMN IF NOT EXISTS summary_alert_id uuid"
+        )
+    )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_aggregated_alerts_summary_alert_id "
+            "ON aggregated_alerts (summary_alert_id)"
+        )
+    )
     conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS email varchar"))
     conn.execute(
         text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_email ON users (email)")

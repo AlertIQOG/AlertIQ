@@ -2,13 +2,19 @@ import { Alert, AlertNote } from '../types/alert';
 import { CopilotSuggestion } from '../types/copilot';
 import { apiFetch } from './apiClient';
 
+// Both kinds of group — hand-picked (POST /alerts/aggregate) and correlation-
+// engine — write the same `_is_aggregated` / `_child_count` keys, so the feed
+// renders them identically. `_correlation` is present only on engine-built
+// groups and names the rule behind it.
 function normalizeAlert(raw: unknown): Alert {
   const r = raw as Record<string, unknown>;
   const extra = (r.extra_fields as Record<string, unknown>) ?? {};
+  const correlation = extra._correlation as Record<string, unknown> | undefined;
   return {
     ...(raw as Alert),
     isAggregated: (extra._is_aggregated as boolean) ?? false,
     childCount: (extra._child_count as number) ?? 0,
+    correlationRule: correlation?.rule_name as string | undefined,
   };
 }
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CorrelationCondition } from "../../types/correlation";
 import { apiFetch } from "../../services/apiClient";
+import { fetchAlertFilterOptions } from "../../services/alertsApi";
 import {
   ACTION_OPTIONS,
   DEFAULT_ACTIONS,
@@ -13,14 +14,21 @@ import {
 } from "../actions";
 import {
   ANY_REGION,
+  ANY_SOURCE,
+  CUSTOM_TIME_WINDOW,
+  OPERATOR_LABELS,
+  SOURCE_OPTIONS,
+  TIME_UNITS,
+  TIME_WINDOW_OPTIONS,
   buildScope,
+  mapOperator,
   parseGroupBy,
   parseRecipients,
+  timeWindowToMinutes,
   validateEmailRecipients,
 } from "../rulePayload";
 
 const DEFAULT_REGIONS = [ANY_REGION];
-const sourceOptions = ["Prometheus", "Grafana"];
 
 export default function CreateCorrelationRulePage() {
   const router = useRouter();
@@ -29,9 +37,10 @@ export default function CreateCorrelationRulePage() {
   const [ruleName, setRuleName] = useState("");
   const [timeWindow, setTimeWindow] = useState("5 Minutes");
 
-  const [selectedSource, setSelectedSource] = useState("Prometheus");
-  // Region scope. Defaults to "Any" (match every region) so a first rule is not
-  // silently unmatchable; the fetched list adds the regions seen on real alerts.
+  // Both default to "Any" (unconstrained) so a first rule is not silently
+  // unmatchable just because the form pre-selected a provider or region the
+  // incoming alerts don't carry.
+  const [selectedSource, setSelectedSource] = useState(ANY_SOURCE);
   const [selectedRegion, setSelectedRegion] = useState(ANY_REGION);
   const [regionOptions, setRegionOptions] = useState<string[]>(DEFAULT_REGIONS);
 
@@ -55,6 +64,7 @@ export default function CreateCorrelationRulePage() {
   // Recipients for the "email" action (comma-separated); required when it's on.
   const [emailRecipients, setEmailRecipients] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const emailSelected = selectedActions.includes("email");
 
@@ -62,36 +72,14 @@ export default function CreateCorrelationRulePage() {
     setSelectedActions((prev) => toggleAction(prev, id));
   };
 
-useEffect(() => {
-  const fetchRegionOptions = async () => {
-    try {
-      const response = await apiFetch("/alerts/");
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch alerts");
-      }
-
-      const data = await response.json();
-      const alerts = Array.isArray(data) ? data : data.items || data.alerts || [];
-
-      const regions = Array.from(
-        new Set(
-          alerts
-            .map((alert: any) => alert.region || alert.environment || alert.env)
-            .filter(Boolean)
-        )
-      ) as string[];
-
-      // Always keep "Any" available as the broad, always-matchable choice.
-      setRegionOptions([ANY_REGION, ...regions]);
-    } catch (error) {
-      console.error("Error fetching region options:", error);
-      setRegionOptions(DEFAULT_REGIONS);
-    }
-  };
-
-  fetchRegionOptions();
-}, []);
+  // Selectable regions come from the backend's filter endpoint, which returns
+  // the distinct values actually present on alerts. "Any" always stays first as
+  // the broad, always-matchable choice.
+  useEffect(() => {
+    fetchAlertFilterOptions()
+      .then((options) => setRegionOptions([ANY_REGION, ...options.region]))
+      .catch(() => setRegionOptions(DEFAULT_REGIONS));
+  }, []);
 
   const handleAddCondition = () => {
     const newCondition: CorrelationCondition = {
@@ -122,52 +110,7 @@ useEffect(() => {
     );
   };
 
-  const mapOperator = (operator: string) => {
-    switch (operator) {
-      case "Equals":
-        return "equals";
-      case "Not equals":
-        return "not_equals";
-      case "Contains":
-        return "contains";
-      case "Greater than":
-        return "greater_than";
-      case "Less than":
-        return "less_than";
-      case "Greater or equal":
-        return "greater_or_equal";
-      case "Less or equal":
-        return "less_or_equal";
-      case "Is Present":
-        return "is_present";
-      default:
-        return "equals";
-    }
-  };
-
-  const getTimeWindowInMinutes = () => {
-    if (timeWindow !== "Other") {
-      return Number(timeWindow.split(" ")[0]);
-    }
-
-    const value = Number(customTimeValue);
-
-    switch (customTimeUnit) {
-      case "Seconds":
-        return Math.ceil(value / 60);
-      case "Hours":
-        return value * 60;
-      case "Days":
-        return value * 24 * 60;
-      case "Minutes":
-      default:
-        return value;
-    }
-  };
-
   const handleSaveRule = async () => {
-    const finalTimeWindow = getTimeWindowInMinutes();
-
     const recipients = parseRecipients(emailRecipients);
 
     // Block save when the email action is on but recipients are missing/invalid.
@@ -189,23 +132,34 @@ useEffect(() => {
         operator: mapOperator(condition.operator),
         value: condition.value,
       })),
-      time_window_minutes: finalTimeWindow,
+      time_window_minutes: timeWindowToMinutes({
+        window: timeWindow,
+        customValue: customTimeValue,
+        customUnit: customTimeUnit,
+      }),
       group_by: parseGroupBy(groupBy),
       actions: selectedActions,
       // Only meaningful when the email action is selected; harmless otherwise.
       email_recipients: emailSelected ? recipients : [],
     };
 
-    const response = await apiFetch("/correlation-rules/", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to create correlation rule");
+    try {
+      setIsSaving(true);
+      const response = await apiFetch("/correlation-rules/", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to create correlation rule (${response.status})`);
+      }
+      router.push("/correlation");
+    } catch (error) {
+      setFormError(
+        error instanceof Error ? error.message : "Failed to save the rule."
+      );
+    } finally {
+      setIsSaving(false);
     }
-
-    router.push("/correlation");
   };
 
   return (
@@ -260,7 +214,7 @@ useEffect(() => {
               <span className="text-slate-500 text-sm">=</span>
 
               <div className="flex gap-2">
-                {sourceOptions.map((source) => (
+                {SOURCE_OPTIONS.map((source) => (
                   <button
                     key={source}
                     type="button"
@@ -336,14 +290,9 @@ useEffect(() => {
                         updateCondition(condition.id, "operator", e.target.value)
                       }
                     >
-                      <option>Greater than</option>
-                      <option>Less than</option>
-                      <option>Equals</option>
-                      <option>Not equals</option>
-                      <option>Contains</option>
-                      <option>Greater or equal</option>
-                      <option>Less or equal</option>
-                      <option>Is Present</option>
+                      {OPERATOR_LABELS.map((label) => (
+                        <option key={label}>{label}</option>
+                      ))}
                     </select>
 
                     <input
@@ -421,15 +370,13 @@ useEffect(() => {
                 onChange={(e) => setTimeWindow(e.target.value)}
                 className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-4 py-3 text-sm outline-none focus:border-indigo-500 cursor-pointer"
               >
-                <option>5 Minutes</option>
-                <option>10 Minutes</option>
-                <option>30 Minutes</option>
-                <option>1 Hour</option>
-                <option>Other</option>
+                {TIME_WINDOW_OPTIONS.map((option) => (
+                  <option key={option}>{option}</option>
+                ))}
               </select>
 
               {/* Custom Time Window Input */}
-              {timeWindow === "Other" && (
+              {timeWindow === CUSTOM_TIME_WINDOW && (
                 <div className="flex items-center gap-2 mt-1 animate-fadeIn">
                   <input
                     type="number"
@@ -444,10 +391,9 @@ useEffect(() => {
                     onChange={(e) => setCustomTimeUnit(e.target.value)}
                     className="w-32 shrink-0 bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-indigo-500 cursor-pointer"
                   >
-                    <option>Seconds</option>
-                    <option>Minutes</option>
-                    <option>Hours</option>
-                    <option>Days</option>
+                    {TIME_UNITS.map((unit) => (
+                      <option key={unit}>{unit}</option>
+                    ))}
                   </select>
                 </div>
               )}
@@ -534,10 +480,12 @@ useEffect(() => {
           Cancel
         </Link>
         <button
+          type="button"
           onClick={handleSaveRule}
-          className="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold py-2.5 px-6 rounded-lg transition-colors shadow-lg shadow-indigo-500/20"
+          disabled={isSaving}
+          className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white text-sm font-bold py-2.5 px-6 rounded-lg transition-colors shadow-lg shadow-indigo-500/20"
         >
-          Save Rule
+          {isSaving ? "Saving..." : "Save Rule"}
         </button>
       </footer>
     </main>

@@ -5,21 +5,38 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { CorrelationCondition } from "../../../types/correlation";
 import { apiFetch } from "../../../services/apiClient";
+import { fetchAlertFilterOptions } from "../../../services/alertsApi";
+import {
+  ACTION_OPTIONS,
+  DEFAULT_ACTIONS,
+  toggleAction,
+  type CorrelationActionId,
+} from "../../actions";
+import {
+  ANY_REGION,
+  ANY_SOURCE,
+  CUSTOM_TIME_WINDOW,
+  OPERATOR_LABELS,
+  SOURCE_OPTIONS,
+  TIME_UNITS,
+  TIME_WINDOW_OPTIONS,
+  buildScope,
+  mapOperator,
+  mapOperatorToLabel,
+  minutesToTimeWindow,
+  parseGroupBy,
+  parseRecipients,
+  timeWindowToMinutes,
+  validateEmailRecipients,
+} from "../../rulePayload";
 
-const DEFAULT_ENVIRONMENTS = ["PROD", "STG"];
-const sourceOptions = ["Prometheus", "Grafana"];
-
+// The rule as the API returns it (CorrelationRuleRead).
 type ApiCorrelationRule = {
   id: string;
   name: string;
-  description?: string;
+  description?: string | null;
   enabled: boolean;
-  scope?: {
-    source?: string;
-    environment?: string;
-    sources?: string[];
-    environments?: string[];
-  };
+  scope?: { source?: string; region?: string };
   conditions?: {
     field: string;
     operator: string;
@@ -27,6 +44,8 @@ type ApiCorrelationRule = {
   }[];
   time_window_minutes?: number;
   group_by?: string[];
+  actions?: CorrelationActionId[];
+  email_recipients?: string[];
 };
 
 export default function EditCorrelationRulePage() {
@@ -36,144 +55,117 @@ export default function EditCorrelationRulePage() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const [ruleName, setRuleName] = useState("");
+  // Preserved across a save: the form has no description field, so echoing the
+  // stored value back keeps an edit from silently wiping it.
+  const [description, setDescription] = useState("");
   const [isEnabled, setIsEnabled] = useState(true);
 
   const [timeWindow, setTimeWindow] = useState("5 Minutes");
   const [customTimeValue, setCustomTimeValue] = useState("");
   const [customTimeUnit, setCustomTimeUnit] = useState("Minutes");
 
-  const [selectedSource, setSelectedSource] = useState("Prometheus");
-  const [selectedEnvironment, setSelectedEnvironment] = useState("PROD");
-  const [environmentOptions, setEnvironmentOptions] =
-    useState<string[]>(DEFAULT_ENVIRONMENTS);
+  const [selectedSource, setSelectedSource] = useState(ANY_SOURCE);
+  // Region scope, matching the create form: "Any" leaves it unconstrained.
+  const [selectedRegion, setSelectedRegion] = useState(ANY_REGION);
+  const [regionOptions, setRegionOptions] = useState<string[]>([ANY_REGION]);
 
-  const [conditions, setConditions] = useState<CorrelationCondition[]>([
-    {
-      id: "1",
-      metric: "cpu_usage",
-      operator: "Greater than",
-      value: "90%",
-    },
-  ]);
+  const [conditions, setConditions] = useState<CorrelationCondition[]>([]);
 
+  // Fields to group matching alerts by (comma-separated). Must be present on
+  // the alert or the rule skips it.
+  const [groupBy, setGroupBy] = useState("");
+
+  const [selectedActions, setSelectedActions] =
+    useState<CorrelationActionId[]>(DEFAULT_ACTIONS);
+  const [emailRecipients, setEmailRecipients] = useState("");
+
+  const emailSelected = selectedActions.includes("email");
+
+  // Selectable regions come from the backend's filter endpoint, which returns
+  // the distinct values actually present — no need to page through alerts.
   useEffect(() => {
-    const loadPageData = async () => {
+    fetchAlertFilterOptions()
+      .then((options) => setRegionOptions([ANY_REGION, ...options.region]))
+      .catch(() => setRegionOptions([ANY_REGION]));
+  }, []);
+
+  // Load the rule and pre-fill every control from it.
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadRule = async () => {
       try {
-        await fetchEnvironmentOptions();
-
         const response = await apiFetch(`/correlation-rules/${ruleId}`);
-
         if (!response.ok) {
-          throw new Error("Failed to fetch correlation rule");
+          throw new Error(`Failed to fetch correlation rule (${response.status})`);
         }
-
         const rule: ApiCorrelationRule = await response.json();
+        if (cancelled) return;
 
         setRuleName(rule.name || "");
+        setDescription(rule.description || "");
         setIsEnabled(rule.enabled ?? true);
+        setSelectedSource(rule.scope?.source || ANY_SOURCE);
+        setSelectedRegion(rule.scope?.region || ANY_REGION);
+        setGroupBy((rule.group_by || []).join(", "));
+        setSelectedActions(
+          rule.actions?.length ? rule.actions : DEFAULT_ACTIONS
+        );
+        setEmailRecipients((rule.email_recipients || []).join(", "));
 
-        setSelectedSource(
-          rule.scope?.source || rule.scope?.sources?.[0] || "Prometheus"
+        setConditions(
+          rule.conditions?.length
+            ? rule.conditions.map((condition, index) => ({
+                id: String(index + 1),
+                metric: condition.field || "",
+                operator: mapOperatorToLabel(condition.operator),
+                value: String(condition.value ?? ""),
+              }))
+            : [{ id: "1", metric: "", operator: "Equals", value: "" }]
         );
 
-        setSelectedEnvironment(
-          rule.scope?.environment || rule.scope?.environments?.[0] || "PROD"
+        const { window, customValue, customUnit } = minutesToTimeWindow(
+          rule.time_window_minutes ?? 5
         );
-
-        if (rule.conditions && rule.conditions.length > 0) {
-          setConditions(
-            rule.conditions.map((condition, index) => ({
-              id: String(index + 1),
-              metric: condition.field || "",
-              operator: mapOperatorToLabel(condition.operator),
-              value: String(condition.value ?? ""),
-            }))
-          );
-        } else {
-          setConditions([
-            {
-              id: "1",
-              metric: "",
-              operator: "Equals",
-              value: "",
-            },
-          ]);
-        }
-
-        setTimeWindowFromMinutes(rule.time_window_minutes ?? 5);
+        setTimeWindow(window);
+        setCustomTimeValue(customValue);
+        setCustomTimeUnit(customUnit);
       } catch (error) {
-        console.error("Error loading correlation rule:", error);
+        if (!cancelled) {
+          setLoadError(
+            error instanceof Error ? error.message : "Failed to load the rule."
+          );
+        }
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
-    loadPageData();
+    loadRule();
+    return () => {
+      cancelled = true;
+    };
   }, [ruleId]);
 
-  const fetchEnvironmentOptions = async () => {
-    try {
-      const response = await apiFetch("/alerts/");
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch alerts");
-      }
-
-      const data = await response.json();
-      const alerts = Array.isArray(data) ? data : data.items || data.alerts || [];
-
-      const environments = Array.from(
-        new Set(
-          alerts
-            .map((alert: any) => alert.region || alert.environment || alert.env)
-            .filter(Boolean)
-        )
-      ) as string[];
-
-      if (environments.length > 0) {
-        setEnvironmentOptions(environments);
-      }
-    } catch (error) {
-      console.error("Error fetching environment options:", error);
-      setEnvironmentOptions(DEFAULT_ENVIRONMENTS);
-    }
-  };
-
-  const setTimeWindowFromMinutes = (minutes: number) => {
-    if (minutes === 5) {
-      setTimeWindow("5 Minutes");
-    } else if (minutes === 10) {
-      setTimeWindow("10 Minutes");
-    } else if (minutes === 30) {
-      setTimeWindow("30 Minutes");
-    } else if (minutes === 60) {
-      setTimeWindow("1 Hour");
-    } else {
-      setTimeWindow("Other");
-      setCustomTimeValue(String(minutes));
-      setCustomTimeUnit("Minutes");
-    }
+  const handleToggleAction = (id: CorrelationActionId) => {
+    setSelectedActions((prev) => toggleAction(prev, id));
   };
 
   const handleAddCondition = () => {
-    const newCondition: CorrelationCondition = {
-      id: Date.now().toString(),
-      metric: "",
-      operator: "Equals",
-      value: "",
-    };
-
-    setConditions([...conditions, newCondition]);
+    setConditions((prev) => [
+      ...prev,
+      { id: Date.now().toString(), metric: "", operator: "Equals", value: "" },
+    ]);
   };
 
   const handleRemoveCondition = (id: string) => {
-    if (conditions.length > 1) {
-      setConditions((prevConditions) =>
-        prevConditions.filter((condition) => condition.id !== id)
-      );
-    }
+    setConditions((prev) =>
+      prev.length > 1 ? prev.filter((condition) => condition.id !== id) : prev
+    );
   };
 
   const updateCondition = (
@@ -182,113 +174,57 @@ export default function EditCorrelationRulePage() {
     newValue: string
   ) => {
     setConditions((prev) =>
-      prev.map((cond) =>
-        cond.id === id ? { ...cond, [field]: newValue } : cond
-      )
+      prev.map((cond) => (cond.id === id ? { ...cond, [field]: newValue } : cond))
     );
   };
 
-  const mapOperator = (operator: string) => {
-    switch (operator) {
-      case "Equals":
-        return "equals";
-      case "Not equals":
-        return "not_equals";
-      case "Contains":
-        return "contains";
-      case "Greater than":
-        return "greater_than";
-      case "Less than":
-        return "less_than";
-      case "Greater or equal":
-        return "greater_or_equal";
-      case "Less or equal":
-        return "less_or_equal";
-      case "Is Present":
-        return "is_present";
-      default:
-        return "equals";
-    }
-  };
-
-  const mapOperatorToLabel = (operator: string) => {
-    switch (operator) {
-      case "equals":
-        return "Equals";
-      case "not_equals":
-        return "Not equals";
-      case "contains":
-        return "Contains";
-      case "greater_than":
-        return "Greater than";
-      case "less_than":
-        return "Less than";
-      case "greater_or_equal":
-        return "Greater or equal";
-      case "less_or_equal":
-        return "Less or equal";
-      case "is_present":
-        return "Is Present";
-      default:
-        return "Equals";
-    }
-  };
-
-  const getTimeWindowInMinutes = () => {
-    if (timeWindow !== "Other") {
-      return Number(timeWindow.split(" ")[0]);
-    }
-
-    const value = Number(customTimeValue);
-
-    switch (customTimeUnit) {
-      case "Seconds":
-        return Math.ceil(value / 60);
-      case "Hours":
-        return value * 60;
-      case "Days":
-        return value * 24 * 60;
-      case "Minutes":
-      default:
-        return value;
-    }
-  };
-
   const handleSaveRule = async () => {
+    const recipients = parseRecipients(emailRecipients);
+
+    const recipientsCheck = validateEmailRecipients(selectedActions, recipients);
+    if (!recipientsCheck.ok) {
+      setFormError(recipientsCheck.error ?? "Invalid email recipients.");
+      return;
+    }
+    setFormError(null);
+
+    const payload = {
+      name: ruleName,
+      description,
+      enabled: isEnabled,
+      // Only resolvable, non-array keys so the engine can actually match. A
+      // hand-built scope here is what previously made every edited rule
+      // unmatchable (`environment`, `sources`, `environments` never resolve).
+      scope: buildScope({ source: selectedSource, region: selectedRegion }),
+      conditions: conditions.map((condition) => ({
+        field: condition.metric,
+        operator: mapOperator(condition.operator),
+        value: condition.value,
+      })),
+      time_window_minutes: timeWindowToMinutes({
+        window: timeWindow,
+        customValue: customTimeValue,
+        customUnit: customTimeUnit,
+      }),
+      group_by: parseGroupBy(groupBy),
+      actions: selectedActions,
+      email_recipients: emailSelected ? recipients : [],
+    };
+
     try {
       setIsSaving(true);
-
-      const payload = {
-        name: ruleName,
-        description: "",
-        enabled: isEnabled,
-        scope: {
-          source: selectedSource,
-          environment: selectedEnvironment,
-          sources: [selectedSource],
-          environments: [selectedEnvironment],
-        },
-        conditions: conditions.map((condition) => ({
-          field: condition.metric,
-          operator: mapOperator(condition.operator),
-          value: condition.value,
-        })),
-        time_window_minutes: getTimeWindowInMinutes(),
-        group_by: ["service", "host"],
-      };
-
       const response = await apiFetch(`/correlation-rules/${ruleId}`, {
         method: "PATCH",
         body: JSON.stringify(payload),
       });
-
       if (!response.ok) {
-        throw new Error("Failed to update correlation rule");
+        throw new Error(`Failed to update correlation rule (${response.status})`);
       }
-
       router.push("/correlation");
     } catch (error) {
-      console.error("Error updating correlation rule:", error);
+      setFormError(
+        error instanceof Error ? error.message : "Failed to save the rule."
+      );
     } finally {
       setIsSaving(false);
     }
@@ -298,6 +234,20 @@ export default function EditCorrelationRulePage() {
     return (
       <main className="flex-1 flex items-center justify-center bg-slate-950">
         <div className="text-sm text-slate-400">Loading rule...</div>
+      </main>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <main className="flex-1 flex flex-col items-center justify-center gap-4 bg-slate-950">
+        <div className="text-sm text-red-400">{loadError}</div>
+        <Link
+          href="/correlation"
+          className="text-xs font-medium text-slate-400 hover:text-white transition"
+        >
+          Back to correlation rules
+        </Link>
       </main>
     );
   }
@@ -319,6 +269,7 @@ export default function EditCorrelationRulePage() {
 
       <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
         <div className="w-full max-w-4xl mx-auto flex flex-col gap-6 pb-8">
+          {/* Rule Name */}
           <div className="flex flex-col gap-2">
             <label className="text-xs font-semibold text-slate-400 uppercase">
               Rule Name
@@ -332,6 +283,7 @@ export default function EditCorrelationRulePage() {
             />
           </div>
 
+          {/* Rule Status */}
           <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6 shadow-sm">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -343,6 +295,8 @@ export default function EditCorrelationRulePage() {
 
               <button
                 type="button"
+                role="switch"
+                aria-checked={isEnabled}
                 onClick={() => setIsEnabled((prev) => !prev)}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
                   isEnabled ? "bg-green-500" : "bg-slate-700"
@@ -357,6 +311,7 @@ export default function EditCorrelationRulePage() {
             </div>
           </div>
 
+          {/* Rule Scope */}
           <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6 shadow-sm">
             <div className="flex items-center gap-2 mb-4">
               <i className="fas fa-filter text-blue-500"></i>
@@ -370,14 +325,12 @@ export default function EditCorrelationRulePage() {
                 WHERE
               </span>
 
-              <span className="text-xs font-semibold text-slate-300">
-                Source
-              </span>
+              <span className="text-xs font-semibold text-slate-300">Source</span>
 
               <span className="text-slate-500 text-sm">=</span>
 
               <div className="flex gap-2">
-                {sourceOptions.map((source) => (
+                {SOURCE_OPTIONS.map((source) => (
                   <button
                     key={source}
                     type="button"
@@ -397,26 +350,29 @@ export default function EditCorrelationRulePage() {
                 AND
               </span>
 
-              <span className="text-xs font-semibold text-slate-300">
-                Environment
-              </span>
+              <span className="text-xs font-semibold text-slate-300">Region</span>
 
               <span className="text-slate-500 text-sm">=</span>
 
               <select
-                value={selectedEnvironment}
-                onChange={(e) => setSelectedEnvironment(e.target.value)}
+                value={selectedRegion}
+                onChange={(e) => setSelectedRegion(e.target.value)}
                 className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-3 py-2 text-xs outline-none focus:border-indigo-500 cursor-pointer min-w-32"
               >
-                {environmentOptions.map((environment) => (
-                  <option key={environment} value={environment}>
-                    {environment}
+                {/* Keep the saved value selectable even if no alert carries it. */}
+                {(regionOptions.includes(selectedRegion)
+                  ? regionOptions
+                  : [...regionOptions, selectedRegion]
+                ).map((region) => (
+                  <option key={region} value={region}>
+                    {region}
                   </option>
                 ))}
               </select>
             </div>
           </div>
 
+          {/* Trigger Logic */}
           <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6 shadow-sm relative flex flex-col gap-6">
             <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500/30 rounded-l-xl"></div>
 
@@ -448,22 +404,13 @@ export default function EditCorrelationRulePage() {
                     <select
                       value={condition.operator}
                       onChange={(e) =>
-                        updateCondition(
-                          condition.id,
-                          "operator",
-                          e.target.value
-                        )
+                        updateCondition(condition.id, "operator", e.target.value)
                       }
                       className="bg-slate-950 border border-slate-700 text-slate-300 rounded-md px-3 py-1.5 text-xs outline-none focus:border-indigo-500 cursor-pointer"
                     >
-                      <option>Greater than</option>
-                      <option>Less than</option>
-                      <option>Equals</option>
-                      <option>Not equals</option>
-                      <option>Contains</option>
-                      <option>Greater or equal</option>
-                      <option>Less or equal</option>
-                      <option>Is Present</option>
+                      {OPERATOR_LABELS.map((label) => (
+                        <option key={label}>{label}</option>
+                      ))}
                     </select>
 
                     <input
@@ -513,6 +460,28 @@ export default function EditCorrelationRulePage() {
             </div>
           </div>
 
+          {/* Group By */}
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-semibold text-slate-400 uppercase">
+              Group Alerts By
+            </label>
+            <input
+              type="text"
+              value={groupBy}
+              onChange={(e) => setGroupBy(e.target.value)}
+              placeholder="e.g. region, application"
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:border-indigo-500 outline-none transition-colors placeholder:text-slate-600"
+            />
+            <p className="text-xs text-slate-500">
+              Comma-separated alert fields (e.g.{" "}
+              <span className="text-slate-400">region</span>,{" "}
+              <span className="text-slate-400">application</span>). Alerts sharing
+              these values are grouped together; an alert missing any of them is
+              skipped.
+            </p>
+          </div>
+
+          {/* Time Window & Actions */}
           <div className="grid grid-cols-2 gap-6 mb-6">
             <div className="flex flex-col gap-2">
               <label className="text-xs font-semibold text-slate-400 uppercase">
@@ -524,14 +493,12 @@ export default function EditCorrelationRulePage() {
                 onChange={(e) => setTimeWindow(e.target.value)}
                 className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-4 py-3 text-sm outline-none focus:border-indigo-500 cursor-pointer"
               >
-                <option>5 Minutes</option>
-                <option>10 Minutes</option>
-                <option>30 Minutes</option>
-                <option>1 Hour</option>
-                <option>Other</option>
+                {TIME_WINDOW_OPTIONS.map((option) => (
+                  <option key={option}>{option}</option>
+                ))}
               </select>
 
-              {timeWindow === "Other" && (
+              {timeWindow === CUSTOM_TIME_WINDOW && (
                 <div className="flex items-center gap-2 mt-1 animate-fadeIn">
                   <input
                     type="number"
@@ -547,10 +514,9 @@ export default function EditCorrelationRulePage() {
                     onChange={(e) => setCustomTimeUnit(e.target.value)}
                     className="w-32 shrink-0 bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-indigo-500 cursor-pointer"
                   >
-                    <option>Seconds</option>
-                    <option>Minutes</option>
-                    <option>Hours</option>
-                    <option>Days</option>
+                    {TIME_UNITS.map((unit) => (
+                      <option key={unit}>{unit}</option>
+                    ))}
                   </select>
                 </div>
               )}
@@ -558,23 +524,73 @@ export default function EditCorrelationRulePage() {
 
             <div className="flex flex-col gap-2">
               <label className="text-xs font-semibold text-slate-400 uppercase">
-                Action
+                Actions
               </label>
-              <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 flex items-center gap-3">
-                <div className="bg-orange-500/20 text-orange-400 p-2 rounded-md">
-                  <i className="fas fa-layer-group"></i>
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-white">
-                    Group to Aggregated Alert
-                  </div>
-                  <div className="text-xs text-slate-500">
-                    Create a single parent alert
-                  </div>
-                </div>
+              <div className="flex flex-col gap-2">
+                {ACTION_OPTIONS.map((action) => {
+                  const isSelected = selectedActions.includes(action.id);
+                  return (
+                    <button
+                      key={action.id}
+                      type="button"
+                      role="checkbox"
+                      aria-checked={isSelected}
+                      onClick={() => handleToggleAction(action.id)}
+                      className={`bg-slate-900 border rounded-lg p-3 flex items-center gap-3 text-left transition ${
+                        isSelected
+                          ? "border-indigo-500 ring-1 ring-indigo-500/40"
+                          : "border-slate-700 hover:border-slate-500"
+                      }`}
+                    >
+                      <div
+                        className={`w-5 h-5 shrink-0 rounded border flex items-center justify-center text-[10px] ${
+                          isSelected
+                            ? "bg-indigo-600 border-indigo-500 text-white"
+                            : "border-slate-600 text-transparent"
+                        }`}
+                      >
+                        <i className="fas fa-check"></i>
+                      </div>
+                      <div className="bg-orange-500/20 text-orange-400 p-2 rounded-md">
+                        <i className={action.icon}></i>
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-white">
+                          {action.label}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {action.description}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
+
+              {emailSelected && (
+                <div className="flex flex-col gap-1.5 mt-1 animate-fadeIn">
+                  <label className="text-xs font-semibold text-slate-400">
+                    Email recipients
+                  </label>
+                  <input
+                    type="text"
+                    value={emailRecipients}
+                    onChange={(e) => setEmailRecipients(e.target.value)}
+                    placeholder="ops@acme.com, oncall@acme.com"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:border-indigo-500 outline-none transition-colors placeholder:text-slate-600"
+                  />
+                  <p className="text-xs text-slate-500">
+                    Comma-separated addresses. Required while “Send Email” is
+                    selected.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
+
+          {formError && (
+            <p className="text-xs font-medium text-red-400">{formError}</p>
+          )}
         </div>
       </div>
 
