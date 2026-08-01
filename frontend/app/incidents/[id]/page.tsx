@@ -5,8 +5,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { mockIncidents } from '../../data/mockIncidents';
 import { createIncident, deleteIncident, fetchIncident, updateIncident } from '../../services/incidentsApi';
+import { fetchAlert } from '../../services/alertsApi';
 import { fetchAllUsers } from '../../services/usersApi';
 import type { Incident, IncidentPriority, IncidentStage } from '../../types/incident';
+import type { Alert } from '../../types/alert';
 
 const STAGE_OPTIONS: IncidentStage[] = ['Open', 'In Progress', 'Resolved'];
 const PRIORITY_OPTIONS: IncidentPriority[] = ['P1', 'P2', 'P3', 'P4'];
@@ -16,6 +18,13 @@ const PRIORITY_STYLES: Record<IncidentPriority, string> = {
   P2: 'bg-orange-500 text-white',
   P3: 'bg-yellow-500 text-white',
   P4: 'bg-slate-600 text-white',
+};
+
+const PRIORITY_LABELS: Record<IncidentPriority, string> = {
+  P1: 'P1 · Critical',
+  P2: 'P2 · High',
+  P3: 'P3 · Medium',
+  P4: 'P4 · Low',
 };
 
 const STAGE_TEXT_STYLES: Record<IncidentStage, string> = {
@@ -48,11 +57,17 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [systemUsers, setSystemUsers] = useState<string[]>([]);
   const [titleError, setTitleError] = useState('');
+  const [linkedAlert, setLinkedAlert] = useState<Alert | null>(null);
 
   useEffect(() => {
     if (isNew) return;
     fetchIncident(id).then((data) => {
-      if (data) setIncident(data);
+      if (data) {
+        setIncident(data);
+        if (data.source === 'alert' && data.linkedAlertId) {
+          fetchAlert(data.linkedAlertId).then(setLinkedAlert);
+        }
+      }
     });
   }, [id, isNew]);
 
@@ -190,29 +205,41 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
 
             <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
               <label className="block text-[10px] text-slate-500 font-bold uppercase mb-2">Stage</label>
-              <div className="relative">
-                <select
-                  value={incident.stage}
-                  onChange={(e) => update('stage', e.target.value as IncidentStage)}
-                  className={`w-full bg-slate-950 border border-slate-700 font-bold text-sm rounded-lg p-2 appearance-none focus:border-indigo-500 outline-none cursor-pointer ${STAGE_TEXT_STYLES[incident.stage]}`}
-                >
-                  {STAGE_OPTIONS.map(s => <option key={s}>{s}</option>)}
-                </select>
-                <i className="fas fa-chevron-down absolute right-3 top-3 text-slate-500 text-xs pointer-events-none"></i>
+              <div className="flex flex-col gap-1">
+                {STAGE_OPTIONS.map(s => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => update('stage', s)}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm font-bold border transition ${
+                      incident.stage === s
+                        ? STAGE_TEXT_STYLES[s] + ' bg-slate-800'
+                        : 'text-slate-600 border-slate-700 hover:border-slate-500'
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
               </div>
             </div>
 
             <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
               <label className="block text-[10px] text-slate-500 font-bold uppercase mb-2">Priority</label>
-              <div className="relative">
-                <select
-                  value={incident.priority}
-                  onChange={(e) => update('priority', e.target.value as IncidentPriority)}
-                  className="w-full bg-slate-950 border border-slate-700 text-red-400 font-bold text-sm rounded-lg p-2 appearance-none focus:border-indigo-500 outline-none cursor-pointer"
-                >
-                  {PRIORITY_OPTIONS.map(p => <option key={p}>{p}</option>)}
-                </select>
-                <i className="fas fa-chevron-down absolute right-3 top-3 text-slate-500 text-xs pointer-events-none"></i>
+              <div className="flex flex-col gap-1">
+                {PRIORITY_OPTIONS.map(p => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => update('priority', p)}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm font-bold border transition ${
+                      incident.priority === p
+                        ? PRIORITY_STYLES[p] + ' border-transparent'
+                        : 'text-slate-600 border-slate-700 hover:border-slate-500'
+                    }`}
+                  >
+                    {PRIORITY_LABELS[p]}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -231,18 +258,23 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
                   <span className="text-slate-500 font-bold uppercase">Reporter:</span>
                   <div className="flex items-center gap-2 bg-slate-800 px-2 py-1 rounded border border-slate-700 text-slate-300">
                     <i className={`fas ${incident.source === 'manual' ? 'fa-user-circle' : 'fa-bolt'}`}></i>
-                    {incident.source === 'manual' ? `You (${incident.assignee})` : 'System (AlertIQ)'}
+                    {incident.source === 'manual'
+                      ? `You (${incident.assignee})`
+                      : linkedAlert?.source_id ?? 'System (AlertIQ)'}
                   </div>
                 </div>
 
-                {incident.source === 'alert' && (incident.linkedAlertTitle || incident.linkedAlertId) && (
+                {incident.source === 'alert' && (
                   <div className="bg-slate-950/50 p-4 rounded-lg border border-slate-800">
                     <div className="text-xs text-slate-500 uppercase font-bold mb-1">Triggered by Alert</div>
-                    <div className="text-white font-medium text-sm">
-                      {incident.linkedAlertTitle ?? (
-                        <span className="font-mono text-slate-400 text-xs">{incident.linkedAlertId}</span>
-                      )}
-                    </div>
+                    {linkedAlert ? (
+                      <div>
+                        <div className="text-white font-medium text-sm">{linkedAlert.message}</div>
+                        <div className="text-xs text-slate-500 mt-1 font-mono">{linkedAlert.source_id}</div>
+                      </div>
+                    ) : (
+                      <span className="font-mono text-slate-400 text-xs">{incident.linkedAlertId}</span>
+                    )}
                   </div>
                 )}
 
@@ -301,7 +333,7 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
             ) : <div />}
 
             <div className="flex gap-4">
-              <Link href="/incidents" className="text-slate-400 hover:text-white text-sm font-medium transition">
+              <Link href="/incidents" className="inline-flex items-center px-4 py-2 text-slate-400 hover:text-white text-sm font-medium transition">
                 Cancel
               </Link>
               <button
