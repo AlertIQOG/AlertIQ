@@ -346,6 +346,25 @@ export default function Home() {
             Promote to Incident
           </button>
           <button
+            onClick={() => {
+              const selected = alerts.filter(a => selectedAlertIds.has(a.id));
+              const headers = ['ID', 'Message', 'Severity', 'Status', 'Source', 'Region', 'Application', 'Created'];
+              const rows = selected.map(a => [
+                a.id, a.message, a.severity, a.status,
+                a.source_id, a.region ?? '', a.application ?? '',
+                a.created_at ?? '',
+              ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
+              const csv = [headers.join(','), ...rows].join('\n');
+              const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+              Object.assign(document.createElement('a'), { href: url, download: 'alerts.csv' }).click();
+              URL.revokeObjectURL(url);
+            }}
+            className="text-sm px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition flex items-center gap-2"
+          >
+            <i className="fas fa-download text-xs"></i>
+            Export CSV
+          </button>
+          <button
             onClick={() => setSelectedAlertIds(new Set())}
             className="text-slate-500 hover:text-white transition ml-1"
             title="Clear selection"
