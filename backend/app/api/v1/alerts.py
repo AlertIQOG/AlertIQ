@@ -45,17 +45,33 @@ from app.services.rag.retriever import find_similar_for_alert
 router = APIRouter()
 
 
-def _with_open_incident(session: DbSession, alerts: list[Alert]) -> list[AlertRead]:
-    """Attach each alert's unresolved incident id, if it has one."""
+# Only the aggregation flags are needed to render a feed row; the rest of
+# extra_fields (annotations, labels, provider values) is fetched on demand when
+# a details panel opens, so it never travels with every row of the feed.
+_FEED_EXTRA_KEYS = ("_is_aggregated", "_child_count")
+
+
+def _to_read(
+    session: DbSession, alerts: list[Alert], *, slim: bool
+) -> list[AlertRead]:
+    """Build ``AlertRead``s with each alert's open-incident id attached.
+
+    When ``slim`` is set (the feed list), ``extra_fields`` is reduced to just the
+    aggregation flags so the heavy provider payload is not shipped per row.
+    """
     if not alerts:
         return []
     open_by_alert = incident_service.open_incident_by_alert(session)
-    return [
-        AlertRead.model_validate(alert).model_copy(
-            update={"open_incident_id": open_by_alert.get(alert.id)}
-        )
-        for alert in alerts
-    ]
+    reads: list[AlertRead] = []
+    for alert in alerts:
+        update: dict[str, object] = {"open_incident_id": open_by_alert.get(alert.id)}
+        if slim:
+            extra = alert.extra_fields or {}
+            update["extra_fields"] = {
+                k: extra[k] for k in _FEED_EXTRA_KEYS if k in extra
+            }
+        reads.append(AlertRead.model_validate(alert).model_copy(update=update))
+    return reads
 
 
 @router.post("/", response_model=AlertRead, status_code=status.HTTP_201_CREATED)
@@ -89,7 +105,7 @@ def list_alerts(
         order_by=sort.sort_by,
         order_desc=sort.order_desc,
     )
-    return _with_open_incident(session, alerts)
+    return _to_read(session, alerts, slim=True)
 
 
 @router.get("/filters", response_model=AlertFilterOptions)
@@ -118,11 +134,11 @@ def aggregate_alerts(*, session: DbSession, body: AggregateRequest) -> AlertRead
 
 @router.get("/{alert_id}", response_model=AlertRead)
 def get_alert(*, session: DbSession, alert_id: uuid.UUID) -> AlertRead:
-    """Retrieve a single alert by its UUID."""
+    """Retrieve a single alert by its UUID, including full ``extra_fields``."""
     alert = alert_service.get(session, id=alert_id)
     if not alert:
         raise NotFoundError("Alert", str(alert_id))
-    return _with_open_incident(session, [alert])[0]
+    return _to_read(session, [alert], slim=False)[0]
 
 
 @router.get("/{alert_id}/raw")

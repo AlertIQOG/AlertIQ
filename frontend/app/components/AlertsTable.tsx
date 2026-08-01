@@ -70,7 +70,7 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
   const columnRenderers: Record<string, ColumnDef<Alert>> = {
     severity: {
       header: 'Severity',
-      className: 'w-24',
+      className: 'w-28',
       renderCell: (alert) => (
         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold border ${getSeverityStyles(alert.severity)}`}>
           {alert.severity}
@@ -79,18 +79,19 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
     },
     status: {
       header: 'Status',
-      className: 'w-24',
+      className: 'w-28',
       renderCell: (alert) => (
-        <span className={`text-xs font-bold ${getStatusStyles(alert.status)}`}>
+        <span className={`text-xs font-bold whitespace-nowrap ${getStatusStyles(alert.status)}`}>
           {alert.status}
         </span>
       )
     },
     message: {
       header: 'Message',
+      className: 'w-96',
       renderCell: (alert) => (
         <>
-          <div className="text-sm font-medium text-white flex items-center gap-2">
+          <div className="text-sm font-medium text-white flex items-center gap-2 min-w-0">
             {alert.isAggregated && (
               <span className="inline-flex items-center gap-1 text-[9px] bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-1.5 py-0.5 rounded font-bold shrink-0">
                 <i className="fas fa-layer-group"></i> AGG · {alert.childCount}
@@ -104,18 +105,18 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
                 <i className="fas fa-fire-flame-curved"></i> INCIDENT
               </span>
             )}
-            <span className="truncate min-w-0 max-w-[460px]" title={alert.message}>{alert.message}</span>
+            <span className="truncate min-w-0" title={alert.message}>{alert.message}</span>
           </div>
-          <div className="text-xs text-slate-500 mt-0.5 truncate max-w-[460px] font-mono" title={alert.id}>ID: {alert.id}</div>
+          <div className="text-xs text-slate-500 mt-0.5 truncate font-mono" title={alert.id}>ID: {alert.id}</div>
         </>
       )
     },
     region: {
       header: 'Region',
-      className: 'w-24',
+      className: 'w-32',
       renderCell: (alert) => (
         <span
-          className="inline-block max-w-[100px] truncate align-middle whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-slate-300 border border-slate-600"
+          className="inline-block max-w-full truncate align-middle whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-slate-300 border border-slate-600"
           title={alert.region || 'Unknown'}
         >
           {alert.region || 'Unknown'}
@@ -182,18 +183,18 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
     },
     created_at: {
       header: 'Time',
-      className: 'w-24 text-right',
+      className: 'w-36 text-right',
       renderCell: (alert) => (
-        <span className="text-xs text-slate-400">
+        <span className="text-xs text-slate-400 whitespace-nowrap">
           {formatDate(alert.created_at)}
         </span>
       )
     },
     updated_at: {
       header: 'Updated At',
-      className: 'w-32 text-right',
+      className: 'w-36 text-right',
       renderCell: (alert) => (
-        <span className="text-xs text-slate-400">
+        <span className="text-xs text-slate-400 whitespace-nowrap">
           {formatDate(alert.updated_at)}
         </span>
       )
@@ -211,7 +212,7 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
   // Always add the chevron "details" column at the end
   alertColumns.push({
     header: '',
-    className: 'w-10 text-right',
+    className: 'w-12 text-right',
     renderCell: () => (
       <i className="fas fa-chevron-right text-slate-600"></i>
     )
@@ -221,7 +222,7 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
   if (onToggleSelect) {
     alertColumns.unshift({
       header: '',
-      className: 'w-10',
+      className: 'w-12',
       renderCell: (alert) => (
         <div
           onClick={(e) => { e.stopPropagation(); onToggleSelect(alert.id); }}
@@ -246,6 +247,7 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
       columns={alertColumns}
       data={alerts}
       onRowClick={onRowClick}
+      fixedLayout
       sortBy={sortBy}
       sortDir={sortDir}
       defaultSortKey={defaultSortKey}

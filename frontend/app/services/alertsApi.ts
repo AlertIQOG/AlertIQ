@@ -90,6 +90,19 @@ export async function fetchAlerts(query: AlertQuery = {}): Promise<Alert[]> {
   }
 }
 
+// Full single alert (including complete extra_fields). The feed list ships a
+// slimmed version, so the details panel fetches this when it opens.
+export async function fetchAlert(alertId: string): Promise<Alert | null> {
+  try {
+    const response = await apiFetch(`/alerts/${alertId}`);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return normalizeAlert(await response.json());
+  } catch (error) {
+    console.error('Error fetching alert:', error);
+    return null;
+  }
+}
+
 // Fetched live when the raw-data viewer opens, so the full provider payload
 // isn't carried by every row of the feed.
 export async function fetchAlertRaw(alertId: string): Promise<Record<string, unknown> | null> {
