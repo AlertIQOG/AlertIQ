@@ -30,6 +30,20 @@ const STAGE_STYLES: Record<IncidentStage, string> = {
   'Resolved': 'text-green-400 border-green-400/30',
 };
 
+const PRIORITY_ORDER: Record<IncidentPriority, number> = { P1: 1, P2: 2, P3: 3, P4: 4 };
+const STAGE_ORDER: Record<IncidentStage, number> = { 'Open': 1, 'In Progress': 2, 'Resolved': 3 };
+
+function sortIncidents(incidents: Incident[], key: string, dir: 'asc' | 'desc'): Incident[] {
+  return [...incidents].sort((a, b) => {
+    let cmp = 0;
+    if (key === 'priority') cmp = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+    else if (key === 'stage') cmp = STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage];
+    else if (key === 'createdAt') cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    else if (key === 'title') cmp = a.title.localeCompare(b.title);
+    return dir === 'asc' ? cmp : -cmp;
+  });
+}
+
 export default function IncidentsPage() {
   const router = useRouter();
   const [search, setSearch] = useState('');
@@ -37,6 +51,11 @@ export default function IncidentsPage() {
   const [loading, setLoading] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [systemUsers, setSystemUsers] = useState<string[]>([]);
+  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
+
+  const handleSort = useCallback((key: string) => {
+    setSort(prev => prev?.key === key && prev.dir === 'asc' ? { key, dir: 'desc' } : { key, dir: 'asc' });
+  }, []);
 
   useEffect(() => {
     const loadUsers = async () => {
@@ -80,9 +99,13 @@ export default function IncidentsPage() {
   }, []);
   useLiveEvents(['incident.'], refreshIncidents);
 
-  const filtered = incidents.filter(inc =>
-    inc.title.toLowerCase().includes(search.toLowerCase()) ||
-    inc.id.toLowerCase().includes(search.toLowerCase())
+  const filtered = sortIncidents(
+    incidents.filter(inc =>
+      inc.title.toLowerCase().includes(search.toLowerCase()) ||
+      inc.id.toLowerCase().includes(search.toLowerCase())
+    ),
+    sort?.key ?? 'createdAt',
+    sort?.dir ?? 'desc',
   );
 
   const columns: ColumnDef<Incident>[] = [
@@ -97,6 +120,7 @@ export default function IncidentsPage() {
     },
     {
       header: 'Priority',
+      sortKey: 'priority',
       className: 'w-32',
       renderCell: (row) => (
         <span className={`px-2 py-1 text-[10px] font-bold rounded ${PRIORITY_STYLES[row.priority]}`}>
@@ -106,6 +130,7 @@ export default function IncidentsPage() {
     },
     {
       header: 'Title',
+      sortKey: 'title',
       renderCell: (row) => (
         <span className="font-bold text-white">{row.title}</span>
       ),
@@ -127,6 +152,7 @@ export default function IncidentsPage() {
     },
     {
       header: 'Stage',
+      sortKey: 'stage',
       className: 'w-36',
       renderCell: (row) => (
         <span className={`text-xs border px-2 py-0.5 rounded-full ${STAGE_STYLES[row.stage]}`}>
@@ -136,6 +162,7 @@ export default function IncidentsPage() {
     },
     {
       header: 'Created',
+      sortKey: 'createdAt',
       className: 'w-40',
       renderCell: (row) => (
         <span className="text-xs text-slate-400 font-mono">{row.createdAt}</span>
@@ -204,6 +231,11 @@ export default function IncidentsPage() {
             columns={columns}
             data={filtered}
             onRowClick={(row) => router.push(`/incidents/${row.id}`)}
+            sortBy={sort?.key}
+            sortDir={sort?.dir}
+            defaultSortKey="createdAt"
+            defaultSortDir="desc"
+            onSort={handleSort}
           />
         )}
       </div>

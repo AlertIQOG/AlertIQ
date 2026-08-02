@@ -111,6 +111,17 @@ export async function fetchAlert(alertId: string): Promise<Alert | null> {
 
 // Fetched live when the raw-data viewer opens, so the full provider payload
 // isn't carried by every row of the feed.
+export async function fetchAlert(alertId: string): Promise<Alert | null> {
+  try {
+    const response = await apiFetch(`/alerts/${alertId}`);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return normalizeAlert(await response.json());
+  } catch (error) {
+    console.error('Error fetching alert:', error);
+    return null;
+  }
+}
+
 export async function fetchAlertRaw(alertId: string): Promise<Record<string, unknown> | null> {
   try {
     const response = await apiFetch(`/alerts/${alertId}/raw`);
