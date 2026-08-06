@@ -135,5 +135,6 @@ class CorrelationRuleRead(BaseModel):
     group_by: list[str]
     actions: list[str] = Field(default_factory=lambda: ["aggregate"])
     email_recipients: list[str] = Field(default_factory=list)
+    last_triggered_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None

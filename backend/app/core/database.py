@@ -39,6 +39,12 @@ with engine.begin() as conn:
     )
     conn.execute(
         text(
+            "ALTER TABLE correlation_rules "
+            "ADD COLUMN IF NOT EXISTS last_triggered_at timestamptz"
+        )
+    )
+    conn.execute(
+        text(
             "ALTER TABLE incidents "
             "ADD COLUMN IF NOT EXISTS linked_alert_ids jsonb NOT NULL DEFAULT '[]'::jsonb"
         )

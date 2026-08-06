@@ -295,9 +295,14 @@ def test_apply_member_duplicate_does_not_recount():
 class FakeRuleService:
     def __init__(self, rules: list[CorrelationRule]):
         self.rules = rules
+        self.touched: list[tuple[CorrelationRule, object]] = []
 
     def get_active(self, session):
         return self.rules
+
+    def touch_last_triggered(self, session, *, rule, now):
+        rule.last_triggered_at = now
+        self.touched.append((rule, now))
 
 
 class FakeAggregateService:
@@ -539,6 +544,54 @@ def test_email_not_sent_when_rule_does_not_match(aggregates, notifier):
     engine.process_alert(None, alert, now=NOW)
 
     assert notifier.calls == []
+
+
+def test_match_stamps_last_triggered(aggregates):
+    rule = make_rule(group_by=["service"])
+    engine = build_engine([rule], aggregates)
+
+    engine.process_alert(None, make_alert(labels={"service": "payments"}), now=NOW)
+
+    assert rule.last_triggered_at == NOW
+
+
+def test_email_only_rule_still_stamps_last_triggered(aggregates, notifier):
+    """The stamp happens before the actions branch, so a rule that never
+    aggregates is still tracked."""
+    rule = make_rule(group_by=["service"], actions=["email"])
+    engine = build_engine([rule], aggregates, notifier)
+
+    engine.process_alert(None, make_alert(labels={"service": "payments"}), now=NOW)
+
+    assert rule.last_triggered_at == NOW
+
+
+def test_no_match_does_not_stamp_last_triggered(aggregates):
+    rule = make_rule(
+        conditions=[{"field": "env", "operator": "equals", "value": "prod"}]
+    )
+    engine = build_engine([rule], aggregates)
+
+    alert = make_alert(labels={"env": "dev", "service": "api"})
+    engine.process_alert(None, alert, now=NOW)
+
+    assert rule.last_triggered_at is None
+
+
+def test_stamp_failure_does_not_break_correlation(aggregates):
+    rule = make_rule(group_by=["service"])
+    engine = build_engine([rule], aggregates)
+
+    def boom(session, *, rule, now):
+        raise RuntimeError("db hiccup")
+
+    engine.rule_service.touch_last_triggered = boom
+
+    alert = make_alert(labels={"service": "payments"})
+    agg = engine.process_alert(None, alert, now=NOW)
+
+    assert agg is not None  # the aggregate action still ran
+    assert len(aggregates.store) == 1
 
 
 def test_email_action_failure_does_not_break_correlation(aggregates):

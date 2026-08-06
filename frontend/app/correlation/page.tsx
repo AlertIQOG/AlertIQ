@@ -19,7 +19,17 @@ type ApiCorrelationRule = {
   group_by?: string[];
   actions?: CorrelationActionId[];
   email_recipients?: string[];
+  last_triggered_at?: string | null;
 };
+
+// Null means the rule has never matched an alert since the column shipped.
+const formatLastTriggered = (iso: string | null | undefined): string =>
+  iso
+    ? new Date(iso).toLocaleString("en-GB", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })
+    : "Never";
 
 export default function CorrelationRulesPage() {
   const [rules, setRules] = useState<CorrelationRule[]>([]);
@@ -65,7 +75,7 @@ export default function CorrelationRulesPage() {
           // read "No actions configured" regardless of what it was saved with.
           actions: rule.actions ?? [],
           email_recipients: rule.email_recipients ?? [],
-          lastTriggered: "Never",
+          lastTriggered: formatLastTriggered(rule.last_triggered_at),
         }));
 
         setRules(mappedRules);

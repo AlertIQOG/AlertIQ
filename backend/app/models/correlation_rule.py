@@ -39,6 +39,13 @@ class CorrelationRule(SQLModel, table=True):
     # back to the global EMAIL_DEFAULT_TO.
     email_recipients: list[str] = Field(default_factory=list, sa_column=Column(JSONB))
 
+    # When an alert last matched this rule. Stamped before the actions run, so
+    # email-only rules are tracked too. NULL = the rule has never triggered.
+    last_triggered_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+
     created_at: datetime | None = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False),
