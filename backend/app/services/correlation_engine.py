@@ -449,6 +449,16 @@ class CorrelationEngine:
             if not rule_matches(alert, rule):
                 continue
 
+            # The rule triggered — record it before the actions branch, so
+            # email-only rules (which never create an aggregate) are tracked
+            # too. Best-effort: a failed stamp must not drop the actions.
+            try:
+                self.rule_service.touch_last_triggered(session, rule=rule, now=now)
+            except Exception:  # noqa: BLE001 — bookkeeping must not break correlation
+                logger.exception(
+                    "Failed to stamp last_triggered_at — rule=%s", rule.name
+                )
+
             actions = rule.actions or ["aggregate"]
 
             # Email is a side-effect fired on every match of an "email" rule.
