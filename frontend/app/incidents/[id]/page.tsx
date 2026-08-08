@@ -3,7 +3,6 @@
 import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { mockIncidents } from '../../data/mockIncidents';
 import { createIncident, deleteIncident, fetchIncident, updateIncident } from '../../services/incidentsApi';
 import { fetchAlert } from '../../services/alertsApi';
 import { fetchAllUsers } from '../../services/usersApi';
@@ -50,9 +49,13 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
   const router = useRouter();
   const isNew = id === 'new';
 
-  const [incident, setIncident] = useState<Incident>(
-    isNew ? NEW_INCIDENT_DEFAULTS : (mockIncidents.find(inc => inc.id === id) ?? NEW_INCIDENT_DEFAULTS)
+  // For existing incidents the editor stays hidden until the fetch resolves:
+  // rendering the form seeded with defaults would let a save wipe the real record.
+  const [incident, setIncident] = useState<Incident | null>(
+    isNew ? NEW_INCIDENT_DEFAULTS : null
   );
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [systemUsers, setSystemUsers] = useState<string[]>([]);
@@ -64,19 +67,55 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
     fetchIncident(id).then((data) => {
       if (data) {
         setIncident(data);
+        setLoadFailed(false);
         if (data.source === 'alert' && data.linkedAlertId) {
           fetchAlert(data.linkedAlertId).then(setLinkedAlert);
         }
+      } else {
+        setLoadFailed(true);
       }
     });
-  }, [id, isNew]);
+  }, [id, isNew, reloadKey]);
 
   useEffect(() => {
   fetchAllUsers().then(users => setSystemUsers(users.map(u => u.username)));
 }, []);
 
+  if (!incident) {
+    return (
+      <main className="flex-1 relative flex flex-col h-full overflow-hidden bg-slate-950">
+        <header className="h-16 border-b border-slate-800 flex items-center gap-4 px-6 bg-slate-900 shrink-0">
+          <Link
+            href="/incidents"
+            className="text-slate-400 hover:text-white flex items-center gap-2 text-xs font-bold uppercase tracking-wider transition"
+          >
+            <i className="fas fa-arrow-left"></i> Back
+          </Link>
+        </header>
+        <div className="flex-1 flex items-center justify-center">
+          {loadFailed ? (
+            <div className="flex flex-col items-center gap-3">
+              <div className="text-sm text-red-400">
+                <i className="fas fa-triangle-exclamation mr-2"></i>
+                Couldn&apos;t load this incident. It may have been deleted.
+              </div>
+              <button
+                onClick={() => { setLoadFailed(false); setReloadKey((k) => k + 1); }}
+                className="text-xs font-bold text-slate-300 border border-slate-700 hover:border-slate-500 px-3 py-1.5 rounded-lg transition"
+              >
+                <i className="fas fa-rotate-right mr-1"></i> Retry
+              </button>
+            </div>
+          ) : (
+            <div className="text-sm text-slate-500">Loading incident...</div>
+          )}
+        </div>
+      </main>
+    );
+  }
+
   const update = <K extends keyof Incident>(field: K, value: Incident[K]) => {
-    setIncident(prev => ({ ...prev, [field]: value }));
+    setIncident(prev => (prev ? { ...prev, [field]: value } : prev));
   };
 
   const handleSave = async () => {
