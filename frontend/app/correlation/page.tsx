@@ -36,6 +36,10 @@ export default function CorrelationRulesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [ruleToDelete, setRuleToDelete] = useState<CorrelationRule | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [togglingRuleIds, setTogglingRuleIds] = useState<Set<string>>(
+    new Set()
+  );
+  const [toggleError, setToggleError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchRules = async () => {
@@ -88,12 +92,46 @@ export default function CorrelationRulesPage() {
     fetchRules();
   }, []);
 
-  const handleToggleActive = (ruleId: string, currentStatus: boolean) => {
+  const setRuleActive = (ruleId: string, isActive: boolean) => {
     setRules((prevRules) =>
       prevRules.map((rule) =>
-        rule.id === ruleId ? { ...rule, isActive: !currentStatus } : rule
+        rule.id === ruleId ? { ...rule, isActive } : rule
       )
     );
+  };
+
+  const handleToggleActive = async (ruleId: string, currentStatus: boolean) => {
+    // A request for this rule is already in flight — ignore the extra click.
+    if (togglingRuleIds.has(ruleId)) return;
+
+    setTogglingRuleIds((prev) => new Set(prev).add(ruleId));
+    setToggleError(null);
+
+    // Optimistic flip; reverted below if the backend rejects the change.
+    setRuleActive(ruleId, !currentStatus);
+
+    try {
+      const response = await apiFetch(`/correlation-rules/${ruleId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: !currentStatus }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to update correlation rule (${response.status})`);
+      }
+    } catch (error) {
+      console.error("Error toggling correlation rule:", error);
+      setRuleActive(ruleId, currentStatus);
+      setToggleError(
+        `Failed to ${currentStatus ? "disable" : "enable"} the rule. The change was not saved.`
+      );
+    } finally {
+      setTogglingRuleIds((prev) => {
+        const next = new Set(prev);
+        next.delete(ruleId);
+        return next;
+      });
+    }
   };
 
   const handleDeleteRule = async () => {
@@ -162,11 +200,30 @@ export default function CorrelationRulesPage() {
           </Link>
         </div>
 
+        {/* Toggle Error Banner */}
+        {toggleError && (
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3">
+            <div className="flex items-center gap-2 text-xs text-red-300">
+              <i className="fas fa-triangle-exclamation text-red-400"></i>
+              <span>{toggleError}</span>
+            </div>
+            <button
+              type="button"
+              aria-label="Dismiss error"
+              onClick={() => setToggleError(null)}
+              className="rounded px-2 py-1 text-red-400 transition-colors hover:bg-red-500/20 hover:text-red-300"
+            >
+              <i className="fas fa-times"></i>
+            </button>
+          </div>
+        )}
+
         {/* Table */}
         <CorrelationRulesTable
           rules={filteredRules}
           onToggleActive={handleToggleActive}
           onDeleteRule={setRuleToDelete}
+          togglingRuleIds={togglingRuleIds}
         />
       </div>
       {ruleToDelete && (

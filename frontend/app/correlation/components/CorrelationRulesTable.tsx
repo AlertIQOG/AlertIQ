@@ -14,6 +14,8 @@ interface CorrelationRulesTableProps {
   rules: CorrelationRule[];
   onToggleActive: (ruleId: string, currentStatus: boolean) => void;
   onDeleteRule: (rule: CorrelationRule) => void;
+  /** Rules with a toggle request in flight — their switch is disabled. */
+  togglingRuleIds?: ReadonlySet<string>;
 }
 
 interface MenuPosition {
@@ -29,6 +31,7 @@ export default function CorrelationRulesTable({
   rules,
   onToggleActive,
   onDeleteRule,
+  togglingRuleIds,
 }: CorrelationRulesTableProps) {
   const [openMenuRuleId, setOpenMenuRuleId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
@@ -115,11 +118,12 @@ export default function CorrelationRulesTable({
               ? `Disable ${rule.name}`
               : `Enable ${rule.name}`
           }
+          disabled={togglingRuleIds?.has(rule.id)}
           onClick={(event) => {
             event.stopPropagation();
             onToggleActive(rule.id, rule.isActive);
           }}
-          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/40 ${
+          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/40 disabled:cursor-not-allowed disabled:opacity-50 ${
             rule.isActive ? "bg-green-500" : "bg-slate-700"
           }`}
         >
