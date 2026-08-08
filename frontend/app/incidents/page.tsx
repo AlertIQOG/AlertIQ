@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import DataTable, { ColumnDef } from '../components/DataTable';
-import { mockIncidents } from '../data/mockIncidents';
 import { deleteIncident, fetchIncidents, updateIncident } from '../services/incidentsApi';
 import type { Incident, IncidentPriority, IncidentStage } from '../types/incident';
 import { fetchAllUsers } from '../services/usersApi';
@@ -49,6 +48,8 @@ export default function IncidentsPage() {
   const [search, setSearch] = useState('');
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [systemUsers, setSystemUsers] = useState<string[]>([]);
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
@@ -85,17 +86,27 @@ export default function IncidentsPage() {
 
   useEffect(() => {
     fetchIncidents().then((data) => {
-      setIncidents(data.length > 0 ? data : mockIncidents);
+      if (data) {
+        setIncidents(data);
+        setLoadError(false);
+      } else {
+        setLoadError(true);
+      }
       setLoading(false);
     });
-  }, []);
+  }, [reloadKey]);
 
-  // Live updates: refetch when incidents change on the server. Keeps the
-  // mock fallback out of the live path so a transient empty result doesn't
-  // replace real data with mocks.
+  const retryLoad = () => {
+    setLoading(true);
+    setLoadError(false);
+    setReloadKey((k) => k + 1);
+  };
+
+  // Live updates: refetch when incidents change on the server. A failed
+  // refresh (null) keeps the current list rather than clearing it.
   const refreshIncidents = useCallback(async () => {
     const data = await fetchIncidents();
-    if (data.length > 0) setIncidents(data);
+    if (data) setIncidents(data);
   }, []);
   useLiveEvents(['incident.'], refreshIncidents);
 
@@ -226,6 +237,24 @@ export default function IncidentsPage() {
 
         {loading ? (
           <div className="flex items-center justify-center h-40 text-slate-500 text-sm">Loading...</div>
+        ) : loadError ? (
+          <div className="flex flex-col items-center justify-center h-40 gap-3 bg-slate-900 border border-slate-800 rounded-xl">
+            <div className="text-sm text-red-400">
+              <i className="fas fa-triangle-exclamation mr-2"></i>
+              Failed to load incidents.
+            </div>
+            <button
+              onClick={retryLoad}
+              className="text-xs font-bold text-slate-300 border border-slate-700 hover:border-slate-500 px-3 py-1.5 rounded-lg transition"
+            >
+              <i className="fas fa-rotate-right mr-1"></i> Retry
+            </button>
+          </div>
+        ) : incidents.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-40 gap-1 bg-slate-900 border border-slate-800 rounded-xl">
+            <div className="text-sm text-slate-400">No incidents yet</div>
+            <div className="text-xs text-slate-600">Create one manually or promote an alert.</div>
+          </div>
         ) : (
           <DataTable
             columns={columns}
