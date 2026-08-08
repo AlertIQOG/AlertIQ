@@ -14,9 +14,13 @@ interface AlertsTableProps {
   defaultSortKey?: string;
   defaultSortDir?: 'asc' | 'desc';
   onSort?: (key: string) => void;
+  // Passed through to DataTable so the feed can wire infinite scroll against
+  // the table's internal scroll container.
+  scrollRef?: React.Ref<HTMLDivElement>;
+  footer?: React.ReactNode;
 }
 
-export default function AlertsTable({ alerts, onRowClick, visibleColumns, selectedIds, onToggleSelect, sortBy, sortDir, defaultSortKey, defaultSortDir, onSort }: AlertsTableProps) {
+export default function AlertsTable({ alerts, onRowClick, visibleColumns, selectedIds, onToggleSelect, sortBy, sortDir, defaultSortKey, defaultSortDir, onSort, scrollRef, footer }: AlertsTableProps) {
   
   // Helper functions — kept exactly as they were
   const getSeverityStyles = (severity: string) => {
@@ -260,6 +264,8 @@ export default function AlertsTable({ alerts, onRowClick, visibleColumns, select
       defaultSortKey={defaultSortKey}
       defaultSortDir={defaultSortDir}
       onSort={onSort}
+      scrollRef={scrollRef}
+      footer={footer}
       rowClassName={(alert) =>
         alert.isAggregated
           ? 'border-l-2 border-indigo-500/60 bg-indigo-950/20'

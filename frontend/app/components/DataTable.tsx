@@ -25,16 +25,22 @@ interface DataTableProps<T> {
   // the table or change row heights. Cells clip their overflow. Opt-in because
   // it requires columns to carry widths (only the flexible one may omit it).
   fixedLayout?: boolean;
+  // Exposes the internal scroll container — the table scrolls inside its own
+  // max-h box, so infinite-scroll observers must use this element as root.
+  scrollRef?: React.Ref<HTMLDivElement>;
+  // Rendered inside the scroll container, after the table — the place for an
+  // infinite-scroll sentinel or an end-of-list row.
+  footer?: React.ReactNode;
 }
 
-export default function DataTable<T>({ columns, data, onRowClick, rowClassName, sortBy, sortDir, defaultSortKey, defaultSortDir, onSort, fixedLayout }: DataTableProps<T>) {
+export default function DataTable<T>({ columns, data, onRowClick, rowClassName, sortBy, sortDir, defaultSortKey, defaultSortDir, onSort, fixedLayout, scrollRef, footer }: DataTableProps<T>) {
   // Fall back to the default order for the indicator when nothing is actively sorted.
   const activeKey = sortBy ?? defaultSortKey;
   const activeDir = sortBy ? sortDir : defaultSortDir;
   const isDefault = !sortBy;
   return (
   <div className="w-full bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
-    <div className="w-full max-h-[60vh] overflow-auto custom-scrollbar">
+    <div ref={scrollRef} className="w-full max-h-[60vh] overflow-auto custom-scrollbar">
       <table className={`w-full text-left text-base ${fixedLayout ? 'table-fixed' : ''}`}>
         <thead className="bg-slate-800/50 text-xs uppercase font-semibold text-slate-500 border-b border-slate-800">
           <tr>
@@ -86,6 +92,7 @@ export default function DataTable<T>({ columns, data, onRowClick, rowClassName, 
           ))}
         </tbody>
       </table>
+      {footer}
       </div>
     </div>
   );
