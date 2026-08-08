@@ -104,15 +104,16 @@ class AggregatedAlertService(CRUDBase[AggregatedAlert]):
         Fold ``alert`` into an existing aggregate and persist the change.
 
         Duplicate re-fires are handled by ``apply_member`` (severity/last_seen
-        are refreshed but ``count`` is not incremented) — and skip the summary
-        re-projection entirely, since nothing about the group changed.
+        are refreshed but ``count`` is not incremented). The summary is synced
+        on every fold — a re-fire may have escalated the aggregate's severity,
+        and ``upsert`` reopens re-fired members, so the sync also re-dismisses
+        them behind their group.
         """
-        is_new_member = apply_member(aggregate, alert, now)
+        apply_member(aggregate, alert, now)
         session.add(aggregate)
         session.commit()
         session.refresh(aggregate)
-        if is_new_member:
-            self.sync_summary(session, aggregate=aggregate, member=alert)
+        self.sync_summary(session, aggregate=aggregate, member=alert)
         event_bus.publish("aggregate.updated", aggregate.id)
         return aggregate
 
@@ -168,6 +169,14 @@ class AggregatedAlertService(CRUDBase[AggregatedAlert]):
                 session.add(summary)
 
             member.status = AlertStatus.DISMISSED
+            # Stamp how the dismissal happened: AlertService.upsert uses this
+            # to tell engine-dismissed members (which a re-fire may reopen)
+            # apart from alerts a person dismissed (which must stay dismissed).
+            # Reassigned, not mutated, so SQLAlchemy flushes the JSONB change.
+            member.extra_fields = {
+                **(member.extra_fields or {}),
+                "_correlated_into": str(aggregate.id),
+            }
             session.add(member)
             session.commit()
             session.refresh(summary)

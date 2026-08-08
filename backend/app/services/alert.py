@@ -156,9 +156,13 @@ class AlertService(CRUDBase[Alert]):
         Update rules for existing alerts:
         - ``severity``, ``extra_fields``, ``impact`` are always overwritten with
           the latest values from the provider.
-        - ``status`` is only overwritten when the incoming status is ``SOLVED``
-          (i.e. the provider resolved the alert).  User-set workflow states like
-          ``IN_PROGRESS`` or ``DISMISSED`` are preserved on re-fires.
+        - ``status``: an incoming ``SOLVED`` (the provider resolved the alert)
+          always wins. An incoming ``OPEN`` re-fire reopens alerts the provider
+          previously resolved (``SOLVED``) and alerts the correlation engine
+          dismissed into a group (marked ``_correlated_into``) — the engine then
+          re-folds those into an open group or starts a fresh one. User-set
+          workflow states (``IN_PROGRESS``, or ``DISMISSED`` set by a person)
+          are preserved on re-fires.
         - ``created_at`` is never touched; ``updated_at`` is managed by the DB.
         """
         existing = session.exec(
@@ -169,12 +173,22 @@ class AlertService(CRUDBase[Alert]):
         ).first()
 
         if existing is not None:
+            # Read before extra_fields is overwritten with the provider payload.
+            was_correlated = bool(
+                (existing.extra_fields or {}).get("_correlated_into")
+            )
             existing.severity = obj_in.severity
             existing.extra_fields = obj_in.extra_fields
             existing.impact = obj_in.impact
-            # Resolved always wins; OPEN does not override user workflow states
             if obj_in.status == AlertStatus.SOLVED:
                 existing.status = obj_in.status
+            elif obj_in.status == AlertStatus.OPEN and (
+                existing.status == AlertStatus.SOLVED
+                or (existing.status == AlertStatus.DISMISSED and was_correlated)
+            ):
+                # A still-firing alert must not stay hidden behind a stale
+                # resolution or a correlation group that may have closed.
+                existing.status = AlertStatus.OPEN
             session.commit()
             session.refresh(existing)
             if existing.status == AlertStatus.SOLVED:
