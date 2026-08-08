@@ -48,7 +48,11 @@ export default function Home() {
   // ── Infinite-scroll pagination ────────────────────────────────
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);   // vertical scroll container
+  // The table body scrolls inside DataTable's own max-h container, so the
+  // observer root and the sentinel must both live in that scrolling context:
+  // scrollRef is handed down to the table's internal scroll div, and the
+  // sentinel is rendered inside it via the table's footer slot.
+  const scrollRef = useRef<HTMLDivElement>(null);   // table's internal scroll container
   const sentinelRef = useRef<HTMLDivElement>(null); // bottom marker the observer watches
   const loadingLockRef = useRef(false);             // guards against concurrent page loads
   const genRef = useRef(0);                         // bumps on reset to discard stale in-flight pages
@@ -240,7 +244,7 @@ export default function Home() {
     <>
       <main className="flex-1 relative flex flex-col h-full overflow-hidden bg-slate-950">
         <PageHeader title="Alerts Feed" badge="Incoming Stream" />
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-6">
           {/* Filters Bar */}
           <div className="flex items-center flex-wrap gap-3 mb-6 p-1">
             <div className="text-xs font-bold text-slate-500 uppercase mr-2"><i className="fas fa-filter mr-1"></i> Filters:</div>
@@ -307,24 +311,26 @@ export default function Home() {
                 defaultSortKey="created_at"
                 defaultSortDir="desc"
                 onSort={handleSort}
+                scrollRef={scrollRef}
+                footer={
+                  hasMore ? (
+                    /* Infinite-scroll sentinel — lives inside the table's scroll
+                       container so the observer sees it when the user scrolls the
+                       table itself. Rendered only while more pages remain. */
+                    <div ref={sentinelRef} className="flex items-center justify-center py-4 text-slate-500">
+                      {isLoadingMore && (
+                        <span className="flex items-center gap-2 text-xs">
+                          <i className="fas fa-circle-notch fa-spin text-indigo-500"></i> Loading more…
+                        </span>
+                      )}
+                    </div>
+                  ) : alerts.length > 0 ? (
+                    <div className="text-center py-4 text-xs text-slate-600 border-t border-slate-800">
+                      End of feed · {alerts.length} alert{alerts.length > 1 ? 's' : ''}
+                    </div>
+                  ) : null
+                }
               />
-            </div>
-          )}
-
-          {/* Infinite-scroll sentinel — the observer loads the next page when this
-              scrolls into view. Rendered only while more pages remain. */}
-          {!isInitialLoading && hasMore && (
-            <div ref={sentinelRef} className="flex items-center justify-center py-6 text-slate-500">
-              {isLoadingMore && (
-                <span className="flex items-center gap-2 text-xs">
-                  <i className="fas fa-circle-notch fa-spin text-indigo-500"></i> Loading more…
-                </span>
-              )}
-            </div>
-          )}
-          {!isInitialLoading && !hasMore && alerts.length > 0 && (
-            <div className="text-center py-6 text-xs text-slate-600">
-              End of feed · {alerts.length} alert{alerts.length > 1 ? 's' : ''}
             </div>
           )}
         </div>
