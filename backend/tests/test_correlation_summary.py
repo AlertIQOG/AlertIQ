@@ -237,12 +237,13 @@ def test_apply_summary_preserves_unrelated_keys():
     assert summary.extra_fields["_notes_hint"] == "keep me"
 
 
-def test_duplicate_refire_leaves_the_projection_untouched():
+def test_duplicate_refire_does_not_recount():
     member = make_member()
     aggregate = make_aggregate(member=member)
     summary = build_summary_alert(aggregate, member)
 
-    # A re-fire of an existing member is rejected by apply_member, which is the
-    # signal the service uses to skip re-projecting entirely.
+    # A re-fire of an existing member is reported as not-new by apply_member:
+    # the aggregate refreshes severity/last_seen but never double-counts.
     assert apply_member(aggregate, member, NOW) is False
+    assert aggregate.count == 1
     assert summary.extra_fields["_child_count"] == 1
