@@ -1,7 +1,9 @@
 import type { Incident } from '../types/incident';
 import { apiFetch } from './apiClient';
 
-export async function fetchIncidents(): Promise<Incident[]> {
+// Returns null when the request fails so callers can distinguish
+// "no incidents" (empty array) from "could not load incidents".
+export async function fetchIncidents(): Promise<Incident[] | null> {
   try {
     const response = await apiFetch('/incidents/');
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -9,10 +11,11 @@ export async function fetchIncidents(): Promise<Incident[]> {
     return data.map(normalizeIncident);
   } catch (error) {
     console.error('Error fetching incidents from backend:', error);
-    return [];
+    return null;
   }
 }
 
+// Returns null when the incident could not be loaded (missing or request failed).
 export async function fetchIncident(id: string): Promise<Incident | null> {
   try {
     const response = await apiFetch(`/incidents/${id}`);
