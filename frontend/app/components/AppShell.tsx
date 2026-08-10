@@ -6,6 +6,12 @@ import { usePathname, useRouter } from 'next/navigation';
 import { AuthUser, getStoredUser, getToken } from '../services/apiClient';
 import { logout } from '../services/authApi';
 
+const NAV_ITEMS = [
+  { href: '/', icon: 'fa-satellite-dish', label: 'Alerts Feed' },
+  { href: '/incidents', icon: 'fa-briefcase-medical', label: 'Incidents Management' },
+  { href: '/correlation', icon: 'fa-code-branch', label: 'Correlation Rules' },
+];
+
 /**
  * Client-side shell: renders the persistent sidebar for authenticated
  * users and redirects to /login when no token is stored.
@@ -89,18 +95,23 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
           </div>
           <nav className="px-3 space-y-2">
-            <Link href="/" className="nav-btn w-full flex items-center px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors text-left group">
-              <i className="fas fa-satellite-dish w-5 text-center mr-2 group-hover:text-white"></i>
-              <span className="font-medium">Alerts Feed</span>
-            </Link>
-            <Link href="/incidents" className="nav-btn w-full flex items-center px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors text-left group">
-              <i className="fas fa-briefcase-medical w-5 text-center mr-2 group-hover:text-white"></i>
-              <span className="font-medium">Incidents Management</span>
-            </Link>
-            <Link href="/correlation" className="nav-btn w-full flex items-center px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors text-left group">
-              <i className="fas fa-code-branch w-5 text-center mr-2 group-hover:text-white"></i>
-              <span className="font-medium">Correlation Rules</span>
-            </Link>
+            {NAV_ITEMS.map(({ href, icon, label }) => {
+              // "/" only matches exactly; other sections stay highlighted on
+              // their sub-pages (/incidents/[id], /correlation/new, ...).
+              const isActive =
+                href === '/' ? pathname === '/' : pathname.startsWith(href);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={`nav-btn ${isActive ? 'active' : ''} w-full flex items-center px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors text-left group`}
+                >
+                  <i className={`fas ${icon} w-5 text-center mr-2 group-hover:text-white ${isActive ? 'text-indigo-400' : ''}`}></i>
+                  <span className="font-medium">{label}</span>
+                </Link>
+              );
+            })}
           </nav>
         </div>
 
