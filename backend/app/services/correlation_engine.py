@@ -343,6 +343,11 @@ def apply_summary_alert(
     """
     summary.message = summary_message(aggregate)
     summary.severity = aggregate.severity
+    # A live member folding in means the group is active again — resurface a
+    # triaged-away summary so the new alert stays visible. In-progress is
+    # left alone (someone is already on it).
+    if summary.status in (AlertStatus.SOLVED, AlertStatus.DISMISSED):
+        summary.status = AlertStatus.OPEN
     summary.extra_fields = {
         **(summary.extra_fields or {}),
         **summary_extra_fields(aggregate, member),
