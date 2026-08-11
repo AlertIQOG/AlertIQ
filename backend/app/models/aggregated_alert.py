@@ -45,8 +45,14 @@ class AggregatedAlert(SQLModel, table=True):
 
     # The correlation rule that produced this aggregate (snapshot of the name
     # is kept so the aggregate is still readable if the rule is later renamed
-    # or deleted).
-    rule_id: uuid.UUID = Field(foreign_key="correlation_rules.id", index=True)
+    # or deleted). Deleting the rule nulls this out rather than being blocked
+    # by it — the grouping already happened and stays part of the history.
+    rule_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="correlation_rules.id",
+        ondelete="SET NULL",
+        index=True,
+    )
     rule_name: str
 
     title: str

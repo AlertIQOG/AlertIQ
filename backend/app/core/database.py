@@ -79,6 +79,32 @@ with engine.begin() as conn:
             "WHERE linked_alert_ids = '[]'::jsonb AND linked_alert_id IS NOT NULL"
         )
     )
+    # aggregated_alerts.rule_id originally blocked deleting any rule that had
+    # ever grouped something (raw 500). Deleting a rule now nulls the link and
+    # keeps the aggregate, which already snapshots rule_name.
+    conn.execute(
+        text(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'aggregated_alerts_rule_id_fkey'
+                      AND confdeltype <> 'n'
+                ) THEN
+                    ALTER TABLE aggregated_alerts
+                        DROP CONSTRAINT aggregated_alerts_rule_id_fkey;
+                    ALTER TABLE aggregated_alerts
+                        ALTER COLUMN rule_id DROP NOT NULL;
+                    ALTER TABLE aggregated_alerts
+                        ADD CONSTRAINT aggregated_alerts_rule_id_fkey
+                        FOREIGN KEY (rule_id) REFERENCES correlation_rules (id)
+                        ON DELETE SET NULL;
+                END IF;
+            END $$;
+            """
+        )
+    )
     # Incident timestamps were naive UTC; convert to timestamptz (values were
     # already UTC). Guarded so it only runs once.
     conn.execute(
