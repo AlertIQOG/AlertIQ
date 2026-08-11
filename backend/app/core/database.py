@@ -79,6 +79,32 @@ with engine.begin() as conn:
             "WHERE linked_alert_ids = '[]'::jsonb AND linked_alert_id IS NOT NULL"
         )
     )
+    # Incident timestamps were naive UTC; convert to timestamptz (values were
+    # already UTC). Guarded so it only runs once.
+    conn.execute(
+        text(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'incidents'
+                      AND column_name = 'created_at'
+                      AND data_type = 'timestamp without time zone'
+                ) THEN
+                    ALTER TABLE incidents
+                        ALTER COLUMN created_at TYPE timestamptz
+                            USING created_at AT TIME ZONE 'UTC',
+                        ALTER COLUMN updated_at TYPE timestamptz
+                            USING updated_at AT TIME ZONE 'UTC';
+                    ALTER TABLE incidents
+                        ALTER COLUMN created_at SET DEFAULT now(),
+                        ALTER COLUMN updated_at SET DEFAULT now();
+                END IF;
+            END $$;
+            """
+        )
+    )
 
 # Indexes backing the feed's filter dropdowns, so each filter's DISTINCT runs as
 # an index-only scan instead of a full table scan. Built CONCURRENTLY (which
