@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import DataTable, { ColumnDef } from '../components/DataTable';
 import { deleteIncident, fetchIncidents, updateIncident } from '../services/incidentsApi';
 import type { Incident, IncidentPriority, IncidentStage } from '../types/incident';
-import { fetchAllUsers } from '../services/usersApi';
+import { assigneeOptions, fetchAllUsers } from '../services/usersApi';
 import { useLiveEvents } from '../hooks/useLiveEvents';
 
 const PRIORITY_STYLES: Record<IncidentPriority, string> = {
@@ -156,7 +156,9 @@ export default function IncidentsPage() {
             onChange={(e) => handleAssigneeChange(row.id, e.target.value)}
             className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-2 py-1 text-xs outline-none cursor-pointer hover:border-slate-500 transition appearance-none w-full"
           >
-            {systemUsers.map(u => <option key={u}>{u}</option>)}
+            {assigneeOptions(systemUsers, row.assignee).map(u => (
+              <option key={u}>{u}</option>
+            ))}
           </select>
         </div>
       ),

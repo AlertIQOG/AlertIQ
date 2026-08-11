@@ -23,3 +23,13 @@ export async function fetchAllUsers(): Promise<UserBase[]> {
     return []; // Return an empty array in case of error
   }
 }
+
+export const UNASSIGNED = 'Unassigned';
+
+/**
+ * Options for an assignee <select>. The current value is always included —
+ * browsers silently display the first option when the value is missing.
+ */
+export function assigneeOptions(usernames: string[], current?: string | null): string[] {
+  return [...new Set([UNASSIGNED, ...usernames, ...(current ? [current] : [])])];
+}

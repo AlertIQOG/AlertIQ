@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Alert, AlertSeverity } from '../types/alert';
 import { createIncident } from '../services/incidentsApi';
 import type { IncidentPriority } from '../types/incident';
-import { fetchAllUsers } from '../services/usersApi';
+import { assigneeOptions, fetchAllUsers, UNASSIGNED } from '../services/usersApi';
 
 const SEVERITY_TO_PRIORITY: Record<AlertSeverity, IncidentPriority> = {
   Critical: 'P1',
@@ -44,7 +44,7 @@ export default function PromoteToIncidentModal({ alerts, onClose, onSuccess }: P
       : `Aggregated: ${alerts.length} alerts — ${alerts[0].message.slice(0, 60)}`
   );
   const [priority, setPriority] = useState<IncidentPriority>(SEVERITY_TO_PRIORITY[highestSeverity]);
-  const [assignee, setAssignee] = useState('Unassigned');
+  const [assignee, setAssignee] = useState(UNASSIGNED);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [systemUsers, setSystemUsers] = useState<string[]>([]);
@@ -173,7 +173,9 @@ export default function PromoteToIncidentModal({ alerts, onClose, onSuccess }: P
                 onChange={(e) => setAssignee(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700 text-white rounded-lg px-3 py-2 text-sm outline-none appearance-none focus:border-indigo-500 cursor-pointer"
               >
-                {systemUsers.map(u => <option key={u}>{u}</option>)}
+                {assigneeOptions(systemUsers).map(u => (
+                  <option key={u}>{u}</option>
+                ))}
               </select>
             </div>
           </div>
