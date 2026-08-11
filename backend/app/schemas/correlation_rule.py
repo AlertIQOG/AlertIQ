@@ -101,15 +101,34 @@ class CorrelationRuleCreate(CorrelationRuleBase):
 
 
 class CorrelationRuleUpdate(BaseModel):
+    """Partial update — every field optional, but a provided field must pass
+    the same checks as on create. Cross-field rules (email action needs
+    recipients) are enforced by the PATCH endpoint on the merged result.
+    """
+
     name: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = None
     enabled: bool | None = None
     scope: dict[str, Any] | None = None
-    conditions: list[CorrelationCondition] | None = None
+    conditions: list[CorrelationCondition] | None = Field(default=None, min_length=1)
     time_window_minutes: int | None = Field(default=None, gt=0, le=1440)
-    group_by: list[str] | None = None
+    group_by: list[str] | None = Field(default=None, min_length=1)
     actions: list[CorrelationAction] | None = Field(default=None, min_length=1)
     email_recipients: list[str] | None = None
+
+    @field_validator("name")
+    @classmethod
+    def name_not_blank(cls, name: str | None) -> str | None:
+        if name is not None and not name.strip():
+            raise ValueError("Rule name cannot be empty")
+        return name
+
+    @field_validator("group_by")
+    @classmethod
+    def group_by_fields_not_blank(cls, group_by: list[str] | None) -> list[str] | None:
+        if group_by is not None and not [f for f in group_by if f.strip()]:
+            raise ValueError("Rule must contain at least one group_by field")
+        return group_by
 
     @field_validator("actions")
     @classmethod

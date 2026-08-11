@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Query, status
+from fastapi.exceptions import RequestValidationError
 
 from app.api.v1.dependencies import DbSession
 from app.core.exceptions import NotFoundError
@@ -73,6 +74,20 @@ def update_correlation_rule(
         raise NotFoundError("CorrelationRule", str(rule_id))
 
     update_data = body.model_dump(exclude_unset=True)
+
+    # Cross-field check on the merged result: a partial update must not leave
+    # the email action without recipients.
+    actions = update_data.get("actions", rule.actions or [])
+    recipients = update_data.get("email_recipients", rule.email_recipients or [])
+    if "email" in actions and not recipients:
+        raise RequestValidationError([
+            {
+                "loc": ("body", "email_recipients"),
+                "msg": "The email action requires at least one recipient",
+                "type": "value_error",
+            }
+        ])
+
     updated = correlation_rule_service.update(
         session,
         db_obj=rule,
