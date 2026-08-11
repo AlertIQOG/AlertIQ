@@ -29,6 +29,8 @@ class CRUDBase(Generic[ModelType]):
     def __init__(self, model: type[ModelType]) -> None:
         self.model = model
         self._column_names, self._jsonb_field = self._inspect_columns(model)
+        # Ordering tiebreaker — keeps pagination deterministic on tied sorts.
+        self._pk_columns = list(sa_inspect(model).primary_key)
 
     # ── Column introspection ──────────────────────────────────────
 
@@ -130,7 +132,11 @@ class CRUDBase(Generic[ModelType]):
 
         if order_by and order_by in self._column_names:
             col = getattr(self.model, order_by)
-            statement = statement.order_by(col.desc() if order_desc else col.asc())
+            # PK tiebreaker: without it, tied rows shuffle between pages and
+            # OFFSET pagination duplicates some rows while dropping others.
+            statement = statement.order_by(
+                col.desc() if order_desc else col.asc(), *self._pk_columns
+            )
 
         statement = statement.offset(skip).limit(limit)
         return list(session.exec(statement).all())

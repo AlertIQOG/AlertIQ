@@ -104,7 +104,13 @@ class AlertService(CRUDBase[Alert]):
 
         rank = self._semantic_rank(order_by)
         statement = self._apply_filters(select(Alert), filters)
-        statement = statement.order_by(rank.desc() if order_desc else rank.asc())
+        # Tiebreakers keep OFFSET pagination stable — severity/status have
+        # only four values, so almost every row is tied.
+        statement = statement.order_by(
+            rank.desc() if order_desc else rank.asc(),
+            Alert.created_at.desc(),
+            Alert.id,
+        )
         statement = statement.offset(skip).limit(limit)
         return list(session.exec(statement).all())
 
