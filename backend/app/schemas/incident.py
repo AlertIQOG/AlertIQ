@@ -21,13 +21,13 @@ class IncidentCreate(BaseModel):
 
 
 class IncidentUpdate(BaseModel):
+    # updated_at is absent on purpose — the DB stamps it via onupdate.
     title: str | None = None
     priority: IncidentPriority | None = None
     stage: IncidentStage | None = None
     assignee: str | None = None
     notes: str | None = None
     affected_services: list[str] | None = None
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class IncidentRead(BaseModel):

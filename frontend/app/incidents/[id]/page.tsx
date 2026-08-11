@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createIncident, deleteIncident, fetchIncident, updateIncident } from '../../services/incidentsApi';
 import { fetchAlert } from '../../services/alertsApi';
-import { fetchAllUsers } from '../../services/usersApi';
+import { assigneeOptions, fetchAllUsers, UNASSIGNED } from '../../services/usersApi';
 import type { Incident, IncidentPriority, IncidentStage } from '../../types/incident';
 import type { Alert } from '../../types/alert';
 
@@ -36,7 +36,7 @@ const NEW_INCIDENT_DEFAULTS: Incident = {
   id: 'NEW',
   priority: 'P3',
   title: '',
-  assignee: 'Unassigned',
+  assignee: UNASSIGNED,
   stage: 'Open',
   createdAt: new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }),
   source: 'manual',
@@ -236,7 +236,9 @@ export default function IncidentDetailPage({ params }: { params: Promise<{ id: s
                   onChange={(e) => update('assignee', e.target.value)}
                   className="w-full bg-slate-950 border border-slate-700 text-white text-sm rounded-lg p-2 appearance-none focus:border-indigo-500 outline-none cursor-pointer"
                 >
-                  {systemUsers.map(u => <option key={u}>{u}</option>)}
+                  {assigneeOptions(systemUsers, incident.assignee).map(u => (
+                    <option key={u}>{u}</option>
+                  ))}
                 </select>
                 <i className="fas fa-chevron-down absolute right-3 top-3 text-slate-500 text-xs pointer-events-none"></i>
               </div>

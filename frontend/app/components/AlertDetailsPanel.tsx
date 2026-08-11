@@ -7,6 +7,7 @@ import { fetchAlert, fetchAlertNotes, addAlertNote, updateAlertNote, deleteAlert
 import { getStoredUser } from '../services/apiClient';
 import { fetchAllUsers } from '../services/usersApi';
 import AlertRawDataModal from './AlertRawDataModal';
+import ErrorBanner from './ErrorBanner';
 
 interface AlertDetailsPanelProps {
   alert: Alert;
@@ -23,6 +24,7 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
   const [notes, setNotes] = useState<AlertNote[]>([]);
   const [notesLoading, setNotesLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [assignee, setAssignee] = useState<string | null>(alert.assignee ?? null);
@@ -201,9 +203,14 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
     const trimmed = noteText.trim();
     if (!trimmed) return;
     setSaving(true);
+    setNoteError(null);
     const created = await addAlertNote(alert.id, trimmed);
-    if (created) setNotes((prev) => [...prev, created]);
-    setNoteText('');
+    if (created) {
+      setNotes((prev) => [...prev, created]);
+      setNoteText(''); // clear only on success — a failure keeps the text
+    } else {
+      setNoteError('Could not save the note. Your text is kept below — try again.');
+    }
     setSaving(false);
   };
 
@@ -215,14 +222,21 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
   const handleSaveEdit = async (id: string) => {
     const trimmed = editText.trim();
     if (!trimmed) return;
+    setNoteError(null);
     const updated = await updateAlertNote(alert.id, id, trimmed);
-    if (updated) setNotes((prev) => prev.map((n) => (n.id === id ? updated : n)));
-    setEditingId(null);
+    if (updated) {
+      setNotes((prev) => prev.map((n) => (n.id === id ? updated : n)));
+      setEditingId(null); // close only on success — a failure keeps the editor open
+    } else {
+      setNoteError('Could not save the edit — try again.');
+    }
   };
 
   const handleDelete = async (id: string) => {
+    setNoteError(null);
     const ok = await deleteAlertNote(alert.id, id);
     if (ok) setNotes((prev) => prev.filter((n) => n.id !== id));
+    else setNoteError('Could not delete the note — try again.');
   };
 
   // Chat order: oldest first, newest at the bottom.
@@ -601,6 +615,13 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
 
             {/* Composer pinned at the bottom, like a chat input */}
             <div className="border-t border-slate-800 p-2.5 bg-slate-900/60">
+              {noteError && (
+                <ErrorBanner
+                  message={noteError}
+                  onDismiss={() => setNoteError(null)}
+                  className="mb-2"
+                />
+              )}
               <textarea
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}

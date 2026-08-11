@@ -16,7 +16,8 @@ class AggregatedAlertRead(BaseModel):
     model_config = {"from_attributes": True}
 
     id: uuid.UUID
-    rule_id: uuid.UUID
+    # Null once the rule that produced this aggregate has been deleted.
+    rule_id: uuid.UUID | None = None
     rule_name: str
     title: str
     group_key: str

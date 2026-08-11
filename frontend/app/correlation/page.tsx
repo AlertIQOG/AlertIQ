@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import CorrelationRulesTable from "./components/CorrelationRulesTable";
+import ErrorBanner from "../components/ErrorBanner";
 import { CorrelationRule } from "../types/correlation";
 import { apiFetch } from "../services/apiClient";
 import type { CorrelationActionId } from "./actions";
@@ -36,6 +37,7 @@ export default function CorrelationRulesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [ruleToDelete, setRuleToDelete] = useState<CorrelationRule | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [togglingRuleIds, setTogglingRuleIds] = useState<Set<string>>(
     new Set()
   );
@@ -139,6 +141,7 @@ export default function CorrelationRulesPage() {
 
     try {
       setIsDeleting(true);
+      setDeleteError(null);
 
       const response = await apiFetch(`/correlation-rules/${ruleToDelete.id}`, {
         method: "DELETE",
@@ -155,6 +158,8 @@ export default function CorrelationRulesPage() {
       setRuleToDelete(null);
     } catch (error) {
       console.error("Error deleting correlation rule:", error);
+      // Keep the dialog open so the operator knows the rule still exists.
+      setDeleteError("Deleting the rule failed. The rule still exists — try again.");
     } finally {
       setIsDeleting(false);
     }
@@ -200,29 +205,19 @@ export default function CorrelationRulesPage() {
           </Link>
         </div>
 
-        {/* Toggle Error Banner */}
         {toggleError && (
-          <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3">
-            <div className="flex items-center gap-2 text-xs text-red-300">
-              <i className="fas fa-triangle-exclamation text-red-400"></i>
-              <span>{toggleError}</span>
-            </div>
-            <button
-              type="button"
-              aria-label="Dismiss error"
-              onClick={() => setToggleError(null)}
-              className="rounded px-2 py-1 text-red-400 transition-colors hover:bg-red-500/20 hover:text-red-300"
-            >
-              <i className="fas fa-times"></i>
-            </button>
-          </div>
+          <ErrorBanner
+            message={toggleError}
+            onDismiss={() => setToggleError(null)}
+            className="mb-4"
+          />
         )}
 
         {/* Table */}
         <CorrelationRulesTable
           rules={filteredRules}
           onToggleActive={handleToggleActive}
-          onDeleteRule={setRuleToDelete}
+          onDeleteRule={(rule) => { setDeleteError(null); setRuleToDelete(rule); }}
           togglingRuleIds={togglingRuleIds}
         />
       </div>
@@ -247,10 +242,12 @@ export default function CorrelationRulesPage() {
             <span className="font-bold text-white">{ruleToDelete.name}</span>?
           </p>
 
+          {deleteError && <ErrorBanner message={deleteError} className="mb-4" />}
+
           <div className="flex justify-end gap-3">
             <button
               type="button"
-              onClick={() => setRuleToDelete(null)}
+              onClick={() => { setRuleToDelete(null); setDeleteError(null); }}
               className="px-4 py-2 rounded-lg text-sm text-slate-300 bg-slate-800 hover:bg-slate-700 transition"
               disabled={isDeleting}
             >

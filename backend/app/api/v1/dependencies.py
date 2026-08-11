@@ -11,7 +11,11 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlmodel import Session
 
 from app.core.database import get_session
-from app.core.exceptions import AuthenticationError, NotFoundError
+from app.core.exceptions import (
+    AuthenticationError,
+    AuthorizationError,
+    NotFoundError,
+)
 from app.core.security import decode_access_token
 from app.models.alert import AlertSeverity, AlertStatus
 from app.models.user import User
@@ -55,8 +59,9 @@ def verify_webhook_token(
     """
     Authenticate an ingest webhook against its source's secret.
 
-    Subsumes the source-existence check: raises 404 for an unknown source
-    and 401 for a missing/wrong token (constant-time compare).
+    Subsumes the source-existence check: raises 404 for an unknown source,
+    401 for a missing/wrong token (constant-time compare), and 403 for a
+    source an admin has deactivated.
     """
     from app.services.source import source_service
 
@@ -75,6 +80,11 @@ def verify_webhook_token(
         x_webhook_token, source.webhook_secret
     ):
         raise AuthenticationError("Invalid webhook token")
+
+    if not source.is_active:
+        raise AuthorizationError(
+            "Source is deactivated — ingestion for it is paused"
+        )
     return source_id
 
 
