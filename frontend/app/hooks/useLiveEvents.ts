@@ -100,19 +100,35 @@ export function useLiveEvents(
       }
     };
 
+    // Events published while the stream was down are gone for good, so every
+    // *re*connect fires one invalidate to close the gap.
+    let everConnected = false;
+
     const connect = async () => {
+      if (stopped) return;
+
       const token = getToken();
-      if (!token || stopped) return;
+      if (!token) {
+        // Logged out — poll slowly so the stream resumes after re-login.
+        retryTimer = setTimeout(connect, MAX_RETRY_MS);
+        return;
+      }
 
       try {
         const response = await fetch(`${API_BASE_URL}/events/stream`, {
           headers: { Authorization: `Bearer ${token}` },
           signal: controller.signal,
         });
-        if (response.status === 401) return; // session expired — stop retrying
+        if (response.status === 401) {
+          // Expired token — poll slowly until re-login replaces it.
+          if (!stopped) retryTimer = setTimeout(connect, MAX_RETRY_MS);
+          return;
+        }
         if (!response.ok || !response.body) throw new Error(`SSE ${response.status}`);
 
         retryMs = INITIAL_RETRY_MS; // connected — reset backoff
+        if (everConnected) fireInvalidate();
+        everConnected = true;
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
