@@ -6,7 +6,8 @@ import AlertsTable from './components/AlertsTable';
 import ColumnPicker from './components/ColumnPicker';
 import FilterSelect from './components/FilterSelect';
 import { aggregateAlerts, fetchAlerts, fetchAlertFilterOptions, updateAlertStatus, AlertFilterOptions } from './services/alertsApi';
-import { Alert } from './types/alert';
+import { Alert, AlertStatus } from './types/alert';
+import ErrorBanner from './components/ErrorBanner';
 import AlertDetailsPanel from './components/AlertDetailsPanel';
 import PromoteToIncidentModal from './components/PromoteToIncidentModal';
 import PageHeader from './components/PageHeader';
@@ -44,6 +45,8 @@ export default function Home() {
   const [selectedAlertIds, setSelectedAlertIds] = useState<Set<string>>(new Set());
   const [showPromoteModal, setShowPromoteModal] = useState(false);
   const [isAggregating, setIsAggregating] = useState(false);
+  // Failed mutations (status change, grouping) surface here — never silently.
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
   // ── Infinite-scroll pagination ────────────────────────────────
   const [hasMore, setHasMore] = useState(true);
@@ -216,26 +219,34 @@ export default function Home() {
   const handleAggregate = async () => {
     if (selectedAlertIds.size < 2) return;
     setIsAggregating(true);
+    setMutationError(null);
     const result = await aggregateAlerts(Array.from(selectedAlertIds));
     setIsAggregating(false);
     if (result) {
       await refreshAlerts();
       setSelectedAlertIds(new Set());
+    } else {
+      setMutationError('Grouping failed — the selected alerts were not aggregated.');
     }
   };
 
-  const handleStatusChange = async (alertId: string, newStatus: string) => {
-    setAlerts(prev =>
-      prev.map(a => (a.id === alertId ? { ...a, status: newStatus as import('./types/alert').AlertStatus } : a))
-    );
+  // Apply a status to the feed row and the open details panel (if it matches).
+  const applyStatus = useCallback((alertId: string, status: AlertStatus) => {
+    setAlerts(prev => prev.map(a => (a.id === alertId ? { ...a, status } : a)));
+    setSelectedAlert(prev => (prev?.id === alertId ? { ...prev, status } : prev));
+  }, []);
 
-    if (selectedAlert?.id === alertId) {
-      setSelectedAlert(prev => prev ? { ...prev, status: newStatus as import('./types/alert').AlertStatus } : null);
-    }
+  const handleStatusChange = async (alertId: string, newStatus: string) => {
+    const previousStatus =
+      alerts.find(a => a.id === alertId)?.status ?? selectedAlert?.status;
+    setMutationError(null);
+    applyStatus(alertId, newStatus as AlertStatus);
 
     const updated = await updateAlertStatus(alertId, newStatus);
-    if (!updated) {
-      console.error('Failed to update alert status on server');
+    if (!updated && previousStatus) {
+      // Roll the optimistic update back — the change was not saved.
+      applyStatus(alertId, previousStatus);
+      setMutationError(`Could not change the alert status to "${newStatus}" — it is still "${previousStatus}".`);
     }
   };
 
@@ -286,6 +297,14 @@ export default function Home() {
               />
             )}
           </div>
+
+          {mutationError && (
+            <ErrorBanner
+              message={mutationError}
+              onDismiss={() => setMutationError(null)}
+              className="mb-4"
+            />
+          )}
 
           {/* Logic for displaying data */}
           {isInitialLoading ? (
