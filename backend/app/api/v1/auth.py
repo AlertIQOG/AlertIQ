@@ -17,6 +17,8 @@ from app.core.security import (
     create_access_token,
     create_reset_token,
     decode_reset_token,
+    fingerprints_match,
+    password_fingerprint,
 )
 from app.schemas.notification import NotificationMessage
 from app.schemas.user import (
@@ -134,7 +136,7 @@ def forgot_password(*, session: DbSession, payload: ForgotPasswordRequest) -> di
     """
     user = user_service.get_by_email(session, email=payload.email)
     if user is not None and user.is_active and user.email:
-        token = create_reset_token(user.id)
+        token = create_reset_token(user.id, user.hashed_password)
         try:
             _send_reset_email(user.email, token)
         except NotificationError as exc:
@@ -145,12 +147,20 @@ def forgot_password(*, session: DbSession, payload: ForgotPasswordRequest) -> di
 @router.post("/reset-password", response_model=Token)
 def reset_password(*, session: DbSession, payload: ResetPasswordRequest) -> Token:
     """Set a new password from a valid reset token, then log the user in."""
-    user_id = decode_reset_token(payload.token)
-    if user_id is None:
+    decoded = decode_reset_token(payload.token)
+    if decoded is None:
         raise AuthenticationError("This reset link is invalid or has expired")
+    user_id, token_fingerprint = decoded
 
     user = user_service.get(session, id=user_id)
     if user is None or not user.is_active:
+        raise AuthenticationError("This reset link is invalid or has expired")
+
+    # A fingerprint mismatch means the password changed after the token
+    # was issued — the link is spent.
+    if not fingerprints_match(
+        token_fingerprint, password_fingerprint(user.hashed_password)
+    ):
         raise AuthenticationError("This reset link is invalid or has expired")
 
     user = user_service.set_password(session, user=user, new_password=payload.new_password)
