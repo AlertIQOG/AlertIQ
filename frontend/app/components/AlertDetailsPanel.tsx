@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Alert, AlertNote } from './../types/alert';
 import { CopilotSuggestion } from '../types/copilot';
-import { fetchAlert, fetchAlertNotes, addAlertNote, updateAlertNote, deleteAlertNote, updateAlertAssignee, fetchCopilotSuggestion, fetchAlertChildren } from '../services/alertsApi';
+import { fetchAlert, fetchAlertNotes, addAlertNote, updateAlertNote, deleteAlertNote, updateAlertAssignee, fetchCopilotSuggestion, fetchAlertChildren, CopilotRequestError} from '../services/alertsApi';
 import { getStoredUser } from '../services/apiClient';
 import { fetchAllUsers } from '../services/usersApi';
 import AlertRawDataModal from './AlertRawDataModal';
@@ -161,17 +161,43 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
   const [copilot, setCopilot] = useState<CopilotSuggestion | null>(null);
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotError, setCopilotError] = useState<string | null>(null);
+  const [copilotCanRetry, setCopilotCanRetry] = useState(false);
 
   const loadCopilot = async (force: boolean) => {
     setCopilotLoading(true);
     setCopilotError(null);
-    const result = await fetchCopilotSuggestion(alert.id, force);
-    if (result) {
+    setCopilotCanRetry(false);
+
+    try {
+      const result = await fetchCopilotSuggestion(
+        alert.id,
+        force,
+      );
+
       setCopilot(result);
-    } else {
-      setCopilotError('Could not generate a suggestion. Is the copilot configured?');
+      setCopilotCanRetry(false);
+    } catch (error) {
+      console.error(
+        'Failed to generate Copilot suggestion:',
+        error,
+      );
+
+      // Do not leave a previous successful suggestion visible
+      // when the latest request has failed.
+      setCopilot(null);
+
+      if (error instanceof CopilotRequestError) {
+        setCopilotError(error.message);
+        setCopilotCanRetry(error.retryable);
+      } else {
+        setCopilotError(
+          'Unable to generate a Copilot suggestion. Please try again.',
+        );
+        setCopilotCanRetry(true);
+      }
+    } finally {
+      setCopilotLoading(false);
     }
-    setCopilotLoading(false);
   };
 
   const confidenceBadge = (c: string | null) => {
@@ -657,17 +683,50 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
               )}
 
               {copilotError && (
-                <p className="text-sm text-red-400">{copilotError}</p>
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3">
+                  <div className="flex items-start gap-2">
+                    <i className="fas fa-triangle-exclamation mt-0.5 text-red-400 text-xs"></i>
+
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-red-300">
+                        Copilot could not generate a suggestion
+                      </p>
+
+                      <p className="mt-1 text-xs text-red-400/80">
+                        {copilotError}
+                      </p>
+
+                      {copilotCanRetry && (
+                        <button
+                          type="button"
+                          onClick={() => loadCopilot(true)}
+                          disabled={copilotLoading}
+                          className="mt-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <i
+                            className={`fas ${
+                              copilotLoading
+                                ? 'fa-spinner fa-spin'
+                                : 'fa-rotate-right'
+                            } mr-2`}
+                          ></i>
+
+                          {copilotLoading ? 'Retrying...' : 'Retry'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
               )}
 
-              {copilot && !copilot.precedent_found && (
+              {copilot && !copilotError && !copilot.precedent_found && (
                 <div className="text-sm text-slate-400 flex items-start gap-2">
                   <i className="fas fa-circle-info mt-0.5"></i>
                   <span>No similar past alerts found — not enough precedent to suggest a fix.</span>
                 </div>
               )}
 
-              {copilot && copilot.precedent_found && (
+              {copilot && !copilotError && copilot.precedent_found && (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
                     <span className={`px-2 py-1 rounded border ${confidenceBadge(copilot.confidence)}`}>
