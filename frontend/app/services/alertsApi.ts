@@ -1,6 +1,6 @@
 import { Alert, AlertNote } from '../types/alert';
 import { CopilotSuggestion } from '../types/copilot';
-import { apiFetch } from './apiClient';
+import { apiFetch, assertApiResponse } from './apiClient';
 
 // Both kinds of group — hand-picked (POST /alerts/aggregate) and correlation-
 // engine — write the same `_is_aggregated` / `_child_count` keys, so the feed
@@ -30,14 +30,12 @@ export interface AlertFilterOptions {
 // The selectable values for the feed's filters, sourced from the backend so
 // severity/status track their enums and region reflects real data.
 export async function fetchAlertFilterOptions(): Promise<AlertFilterOptions> {
-  try {
-    const response = await apiFetch('/alerts/filters');
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    return await response.json() as AlertFilterOptions;
-  } catch (error) {
-    console.error('Error fetching alert filter options:', error);
-    return { severity: [], status: [], region: [], application: [], component: [], source: [] };
-  }
+  const path = '/alerts/filters';
+  const response = await apiFetch(path);
+
+  await assertApiResponse(response, path);
+
+  return await response.json() as AlertFilterOptions;
 }
 
 export interface AlertQuery {
@@ -67,33 +65,37 @@ export async function fetchAlerts(query: AlertQuery = {}): Promise<Alert[]> {
     sortBy = 'created_at',
     sortDir = 'desc',
   } = query;
-  try {
-    const params = new URLSearchParams({
-      skip: skip.toString(),
-      limit: limit.toString(),
-      sort_by: sortBy,
-      sort_dir: sortDir,
-    });
 
-    // Repeat a param per value: ?status=Open&status=In progress
-    const filters = { severity, status, region, application, component, source };
-    for (const [key, values] of Object.entries(filters)) {
-      for (const value of values) params.append(key, value);
+  const params = new URLSearchParams({
+    skip: skip.toString(),
+    limit: limit.toString(),
+    sort_by: sortBy,
+    sort_dir: sortDir,
+  });
+
+  const filters = {
+    severity,
+    status,
+    region,
+    application,
+    component,
+    source,
+  };
+
+  for (const [key, values] of Object.entries(filters)) {
+    for (const value of values) {
+      params.append(key, value);
     }
-
-    const response = await apiFetch(`/alerts/?${params.toString()}`);
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return (data as unknown[]).map(normalizeAlert);
-
-  } catch (error) {
-    console.error('Error fetching alerts from backend:', error);
-    return [];
   }
+
+  const path = `/alerts/?${params.toString()}`;
+  const response = await apiFetch(path);
+
+  await assertApiResponse(response, path);
+
+  const data = await response.json();
+
+  return (data as unknown[]).map(normalizeAlert);
 }
 
 // Full single alert (including complete extra_fields). The feed list ships a
@@ -134,46 +136,41 @@ export async function fetchAlertChildren(alertId: string): Promise<Alert[]> {
   }
 }
 
-export async function aggregateAlerts(alertIds: string[], title?: string): Promise<Alert | null> {
-  try {
-    const response = await apiFetch('/alerts/aggregate', {
-      method: 'POST',
-      body: JSON.stringify({ alert_ids: alertIds, title }),
-    });
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    return normalizeAlert(await response.json());
-  } catch (error) {
-    console.error('Error aggregating alerts:', error);
-    return null;
-  }
+export async function aggregateAlerts(
+  alertIds: string[],
+  title?: string,
+): Promise<Alert> {
+  const path = '/alerts/aggregate';
+
+  const response = await apiFetch(path, {
+    method: 'POST',
+    body: JSON.stringify({
+      alert_ids: alertIds,
+      title,
+    }),
+  });
+
+  await assertApiResponse(response, path);
+
+  return normalizeAlert(await response.json());
 }
 
 export async function updateAlertStatus(
   alertId: string,
   newStatus: string,
-  retries: number = 1
-): Promise<Alert | null> {
-  try {
-    const response = await apiFetch(`/alerts/${alertId}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ status: newStatus }),
-    });
+): Promise<Alert> {
+  const path = `/alerts/${alertId}`;
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
+  const response = await apiFetch(path, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      status: newStatus,
+    }),
+  });
 
-    const data = await response.json();
-    return data as Alert;
+  await assertApiResponse(response, path);
 
-  } catch (error) {
-    if (retries > 0) {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      return updateAlertStatus(alertId, newStatus, retries - 1);
-    }
-    console.error('Error updating alert status:', error);
-    return null;
-  }
+  return normalizeAlert(await response.json());
 }
 
 export async function updateAlertAssignee(alertId: string, assignee: string | null): Promise<Alert | null> {

@@ -13,6 +13,7 @@ import PromoteToIncidentModal from './components/PromoteToIncidentModal';
 import PageHeader from './components/PageHeader';
 import { DEFAULT_VISIBLE_KEYS, STORAGE_KEY } from './data/columnConfig';
 import { useLiveEvents } from './hooks/useLiveEvents';
+import { getApiErrorMessage } from './services/apiClient';
 
 // Rows fetched per page. Infinite scroll appends a page at a time and stops
 // once the backend returns a short page (fewer than PAGE_SIZE rows).
@@ -47,6 +48,11 @@ export default function Home() {
   const [isAggregating, setIsAggregating] = useState(false);
   // Failed mutations (status change, grouping) surface here — never silently.
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const [feedError, setFeedError] = useState<string | null>(null);
+  const [filterError, setFilterError] = useState<string | null>(null);
+
+  const [feedRetryKey, setFeedRetryKey] = useState(0);
+  const [filterRetryKey, setFilterRetryKey] = useState(0);
 
   // ── Infinite-scroll pagination ────────────────────────────────
   const [hasMore, setHasMore] = useState(true);
@@ -82,12 +88,52 @@ export default function Home() {
   }, []);
 
   // Load the selectable filter values once on mount.
-  useEffect(() => {
-    fetchAlertFilterOptions().then((opts) => {
+useEffect(() => {
+  let cancelled = false;
+
+  const loadFilterOptions = async () => {
+    setFiltersLoaded(false);
+    setFilterError(null);
+
+    try {
+      const opts = await fetchAlertFilterOptions();
+
+      if (cancelled) return;
+
       setFilterOptions(opts);
-      setFiltersLoaded(true);
-    });
-  }, []);
+    } catch (error) {
+      if (cancelled) return;
+
+      console.error('Failed to load alert filter options:', error);
+
+      setFilterError(
+        getApiErrorMessage(
+          error,
+          'Could not load alert filter options.',
+        ),
+      );
+
+      setFilterOptions({
+        severity: [],
+        status: [],
+        region: [],
+        application: [],
+        component: [],
+        source: [],
+      });
+    } finally {
+      if (!cancelled) {
+        setFiltersLoaded(true);
+      }
+    }
+  };
+
+  loadFilterOptions();
+
+  return () => {
+    cancelled = true;
+  };
+}, [filterRetryKey]);
 
   // Persist column preferences whenever they change
   const handleColumnsChange = useCallback((columns: string[]) => {
@@ -126,16 +172,46 @@ export default function Home() {
     const gen = genRef.current;
     const loadFirstPage = async () => {
       setIsFetching(true);
-      const data = await fetchPage(0);
-      if (gen !== genRef.current) return; // a newer reset superseded this one
-      setAlerts(data);
-      setHasMore(data.length === PAGE_SIZE);
-      scrollRef.current?.scrollTo({ top: 0 });
-      setIsFetching(false);
-      setIsInitialLoading(false);
+      setFeedError(null);
+
+      try {
+        const data = await fetchPage(0);
+
+        if (gen !== genRef.current) {
+          return;
+        }
+
+        setAlerts(data);
+        setHasMore(data.length === PAGE_SIZE);
+
+        scrollRef.current?.scrollTo({
+          top: 0,
+        });
+      } catch (error) {
+        if (gen !== genRef.current) {
+          return;
+        }
+
+        console.error('Failed to load alerts feed:', error);
+
+        setFeedError(
+          getApiErrorMessage(
+            error,
+            'Could not load the alerts feed.',
+          ),
+        );
+
+        setAlerts([]);
+        setHasMore(false);
+      } finally {
+        if (gen === genRef.current) {
+          setIsFetching(false);
+          setIsInitialLoading(false);
+        }
+      }
     };
     loadFirstPage();
-  }, [fetchPage]);
+  }, [fetchPage, feedRetryKey]);
 
   const handleReset = () => {
     setSevFilter([]);
@@ -170,20 +246,60 @@ export default function Home() {
 
   // Append the next page when the sentinel scrolls into view (infinite scroll).
   const loadMore = useCallback(async () => {
-    if (loadingLockRef.current || isFetching || !hasMore) return;
+    if (
+      loadingLockRef.current ||
+      isFetching ||
+      !hasMore
+    ) {
+      return;
+    }
+
     loadingLockRef.current = true;
+
     const gen = genRef.current;
+
     setIsLoadingMore(true);
+    setFeedError(null);
+
     try {
       const data = await fetchPage(alerts.length);
-      if (gen !== genRef.current) return; // filters/ordering changed mid-flight
-      setAlerts(prev => [...prev, ...data]);
+
+      if (gen !== genRef.current) {
+        return;
+      }
+
+      setAlerts(prev => [
+        ...prev,
+        ...data,
+      ]);
+
       setHasMore(data.length === PAGE_SIZE);
+    } catch (error) {
+      if (gen !== genRef.current) {
+        return;
+      }
+
+      console.error(
+        'Failed to load additional alerts:',
+        error,
+      );
+
+      setFeedError(
+        getApiErrorMessage(
+          error,
+          'Could not load more alerts.',
+        ),
+      );
     } finally {
       setIsLoadingMore(false);
       loadingLockRef.current = false;
     }
-  }, [fetchPage, alerts.length, hasMore, isFetching]);
+  }, [
+    fetchPage,
+    alerts.length,
+    hasMore,
+    isFetching,
+  ]);
 
   // Keep a ref to the latest loadMore so the observer isn't rebuilt per page.
   const loadMoreRef = useRef(loadMore);
@@ -217,16 +333,34 @@ export default function Home() {
   useLiveEvents(['alert.', 'aggregate.'], refreshAlerts);
 
   const handleAggregate = async () => {
-    if (selectedAlertIds.size < 2) return;
+    if (selectedAlertIds.size < 2) {
+      return;
+    }
+
     setIsAggregating(true);
     setMutationError(null);
-    const result = await aggregateAlerts(Array.from(selectedAlertIds));
-    setIsAggregating(false);
-    if (result) {
+
+    try {
+      await aggregateAlerts(
+        Array.from(selectedAlertIds),
+      );
+
       await refreshAlerts();
       setSelectedAlertIds(new Set());
-    } else {
-      setMutationError('Grouping failed — the selected alerts were not aggregated.');
+    } catch (error) {
+      console.error(
+        'Failed to aggregate selected alerts:',
+        error,
+      );
+
+      setMutationError(
+        getApiErrorMessage(
+          error,
+          'Grouping failed — the selected alerts were not aggregated.',
+        ),
+      );
+    } finally {
+      setIsAggregating(false);
     }
   };
 
@@ -236,17 +370,45 @@ export default function Home() {
     setSelectedAlert(prev => (prev?.id === alertId ? { ...prev, status } : prev));
   }, []);
 
-  const handleStatusChange = async (alertId: string, newStatus: string) => {
+  const handleStatusChange = async (
+    alertId: string,
+    newStatus: string,
+  ) => {
     const previousStatus =
-      alerts.find(a => a.id === alertId)?.status ?? selectedAlert?.status;
-    setMutationError(null);
-    applyStatus(alertId, newStatus as AlertStatus);
+      alerts.find(alert => alert.id === alertId)?.status
+      ?? selectedAlert?.status;
 
-    const updated = await updateAlertStatus(alertId, newStatus);
-    if (!updated && previousStatus) {
-      // Roll the optimistic update back — the change was not saved.
-      applyStatus(alertId, previousStatus);
-      setMutationError(`Could not change the alert status to "${newStatus}" — it is still "${previousStatus}".`);
+    setMutationError(null);
+
+    applyStatus(
+      alertId,
+      newStatus as AlertStatus,
+    );
+
+    try {
+      await updateAlertStatus(
+        alertId,
+        newStatus,
+      );
+    } catch (error) {
+      if (previousStatus) {
+        applyStatus(
+          alertId,
+          previousStatus,
+        );
+      }
+
+      console.error(
+        'Failed to update alert status:',
+        error,
+      );
+
+      setMutationError(
+        getApiErrorMessage(
+          error,
+          `Could not change the alert status to "${newStatus}".`,
+        ),
+      );
     }
   };
 
@@ -297,7 +459,26 @@ export default function Home() {
               />
             )}
           </div>
+          {feedError && (
+            <ErrorBanner
+              message={feedError}
+              actionLabel="Retry"
+              onAction={() => setFeedRetryKey(value => value + 1)}
+              actionDisabled={isFetching}
+              onDismiss={() => setFeedError(null)}
+              className="mb-4"
+            />
+          )}
 
+          {filterError && (
+            <ErrorBanner
+              message={filterError}
+              actionLabel="Reload filters"
+              onAction={() => setFilterRetryKey(value => value + 1)}
+              onDismiss={() => setFilterError(null)}
+              className="mb-4"
+            />
+          )}
           {mutationError && (
             <ErrorBanner
               message={mutationError}

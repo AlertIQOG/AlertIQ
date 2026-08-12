@@ -82,3 +82,98 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
   }
   return response;
 }
+
+export class ApiRequestError extends Error {
+  status: number;
+  path: string;
+  detail?: string;
+
+  constructor(
+    message: string,
+    status: number,
+    path: string,
+    detail?: string,
+  ) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+    this.path = path;
+    this.detail = detail;
+  }
+}
+
+async function extractApiError(response: Response): Promise<string | undefined> {
+  try {
+    const contentType = response.headers.get('content-type') ?? '';
+
+    if (contentType.includes('application/json')) {
+      const payload = await response.clone().json();
+
+      if (typeof payload?.detail === 'string') {
+        return payload.detail;
+      }
+
+      if (typeof payload?.message === 'string') {
+        return payload.message;
+      }
+
+      return JSON.stringify(payload);
+    }
+
+    const text = await response.clone().text();
+    return text || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function assertApiResponse(
+  response: Response,
+  path: string,
+): Promise<void> {
+  if (response.ok) {
+    return;
+  }
+
+  const detail = await extractApiError(response);
+
+  throw new ApiRequestError(
+    detail
+      ? `API request failed: ${detail}`
+      : `API request failed with status ${response.status}`,
+    response.status,
+    path,
+    detail,
+  );
+}
+
+export function getApiErrorMessage(
+  error: unknown,
+  fallback = 'Something went wrong while communicating with the server.',
+): string {
+  if (error instanceof ApiRequestError) {
+    if (error.status >= 500) {
+      return 'AlertIQ backend is currently unavailable. Existing alert data may be temporarily inaccessible.';
+    }
+
+    if (error.status === 403) {
+      return 'You do not have permission to perform this action.';
+    }
+
+    if (error.status === 404) {
+      return 'The requested resource could not be found.';
+    }
+
+    return error.detail || error.message;
+  }
+
+  if (error instanceof TypeError) {
+    return 'Unable to connect to the AlertIQ backend. Check the server or network connection.';
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
+}
