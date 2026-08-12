@@ -454,15 +454,8 @@ class CorrelationEngine:
             if not rule_matches(alert, rule):
                 continue
 
-            # The rule triggered — record it before the actions branch, so
             # email-only rules (which never create an aggregate) are tracked
             # too. Best-effort: a failed stamp must not drop the actions.
-            try:
-                self.rule_service.touch_last_triggered(session, rule=rule, now=now)
-            except Exception:  # noqa: BLE001 — bookkeeping must not break correlation
-                logger.exception(
-                    "Failed to stamp last_triggered_at — rule=%s", rule.name
-                )
 
             actions = rule.actions or ["aggregate"]
 
@@ -473,6 +466,18 @@ class CorrelationEngine:
             # An email-only rule does not consume the alert for aggregation;
             # let a later rule aggregate it.
             if "aggregate" not in actions:
+                try:
+                    self.rule_service.touch_last_triggered(
+                        session,
+                        rule=rule,
+                        now=now,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to stamp last_triggered_at — rule=%s",
+                        rule.name,
+                    )
+
                 continue
 
             grouping = compute_group(alert, rule.group_by)
@@ -510,6 +515,17 @@ class CorrelationEngine:
                     rule.name,
                     result.count,
                 )
+                try:
+                    self.rule_service.touch_last_triggered(
+                        session,
+                        rule=rule,
+                        now=now,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to stamp last_triggered_at — rule=%s",
+                        rule.name,
+                    )
                 return result
 
             result = self.aggregate_service.create_from_alert(
@@ -527,6 +543,17 @@ class CorrelationEngine:
                 rule.name,
                 group_key,
             )
+            try:
+                self.rule_service.touch_last_triggered(
+                    session,
+                    rule=rule,
+                    now=now,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to stamp last_triggered_at — rule=%s",
+                    rule.name,
+                )
             return result
 
         return None

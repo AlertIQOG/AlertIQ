@@ -333,16 +333,34 @@ useEffect(() => {
   useLiveEvents(['alert.', 'aggregate.'], refreshAlerts);
 
   const handleAggregate = async () => {
-    if (selectedAlertIds.size < 2) return;
+    if (selectedAlertIds.size < 2) {
+      return;
+    }
+
     setIsAggregating(true);
     setMutationError(null);
-    const result = await aggregateAlerts(Array.from(selectedAlertIds));
-    setIsAggregating(false);
-    if (result) {
+
+    try {
+      await aggregateAlerts(
+        Array.from(selectedAlertIds),
+      );
+
       await refreshAlerts();
       setSelectedAlertIds(new Set());
-    } else {
-      setMutationError('Grouping failed — the selected alerts were not aggregated.');
+    } catch (error) {
+      console.error(
+        'Failed to aggregate selected alerts:',
+        error,
+      );
+
+      setMutationError(
+        getApiErrorMessage(
+          error,
+          'Grouping failed — the selected alerts were not aggregated.',
+        ),
+      );
+    } finally {
+      setIsAggregating(false);
     }
   };
 
@@ -352,17 +370,45 @@ useEffect(() => {
     setSelectedAlert(prev => (prev?.id === alertId ? { ...prev, status } : prev));
   }, []);
 
-  const handleStatusChange = async (alertId: string, newStatus: string) => {
+  const handleStatusChange = async (
+    alertId: string,
+    newStatus: string,
+  ) => {
     const previousStatus =
-      alerts.find(a => a.id === alertId)?.status ?? selectedAlert?.status;
-    setMutationError(null);
-    applyStatus(alertId, newStatus as AlertStatus);
+      alerts.find(alert => alert.id === alertId)?.status
+      ?? selectedAlert?.status;
 
-    const updated = await updateAlertStatus(alertId, newStatus);
-    if (!updated && previousStatus) {
-      // Roll the optimistic update back — the change was not saved.
-      applyStatus(alertId, previousStatus);
-      setMutationError(`Could not change the alert status to "${newStatus}" — it is still "${previousStatus}".`);
+    setMutationError(null);
+
+    applyStatus(
+      alertId,
+      newStatus as AlertStatus,
+    );
+
+    try {
+      await updateAlertStatus(
+        alertId,
+        newStatus,
+      );
+    } catch (error) {
+      if (previousStatus) {
+        applyStatus(
+          alertId,
+          previousStatus,
+        );
+      }
+
+      console.error(
+        'Failed to update alert status:',
+        error,
+      );
+
+      setMutationError(
+        getApiErrorMessage(
+          error,
+          `Could not change the alert status to "${newStatus}".`,
+        ),
+      );
     }
   };
 
