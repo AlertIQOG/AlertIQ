@@ -338,18 +338,26 @@ class AlertService(CRUDBase[Alert]):
 
         agg_message = title or f"Aggregated: {len(children)} alerts — {children[0].message[:80]}"
 
+        first = children[0]
+        first_extra = first.extra_fields or {}
+
         aggregated = Alert(
-            source_id=children[0].source_id,
+            source_id=first.source_id,
             external_id=str(uuid.uuid4()),
             message=agg_message,
-            application=children[0].application,
-            region=children[0].region,
+            application=first.application,
+            component=first.component,
+            region=first.region,
+            node_name=first.node_name,
+            impact=first.impact,
+            operator=first.operator,
             severity=highest,
             status=AlertStatus.OPEN,
             extra_fields={
                 "_is_aggregated": True,
                 "_child_ids": [str(a.id) for a in children],
                 "_child_count": len(children),
+                "source": first_extra.get("source"),
             },
         )
         session.add(aggregated)

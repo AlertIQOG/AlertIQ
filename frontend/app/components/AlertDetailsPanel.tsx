@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Alert, AlertNote } from './../types/alert';
 import { CopilotSuggestion } from '../types/copilot';
-import { fetchAlert, fetchAlertNotes, addAlertNote, updateAlertNote, deleteAlertNote, updateAlertAssignee, fetchCopilotSuggestion, fetchAlertChildren } from '../services/alertsApi';
+import { fetchAlert, fetchAlertNotes, addAlertNote, updateAlertNote, deleteAlertNote, updateAlertAssignee, fetchCopilotSuggestion, fetchAlertChildren, fetchSimilarAlerts, CopilotRequestError, SimilarAlertHit,} from '../services/alertsApi';
 import { getStoredUser } from '../services/apiClient';
 import { fetchAllUsers } from '../services/usersApi';
 import AlertRawDataModal from './AlertRawDataModal';
@@ -161,17 +161,98 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
   const [copilot, setCopilot] = useState<CopilotSuggestion | null>(null);
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotError, setCopilotError] = useState<string | null>(null);
+  const [copilotCanRetry, setCopilotCanRetry] = useState(false);
+  const [copilotController, setCopilotController] =
+  useState<AbortController | null>(null);
+
+  const [similarAlerts, setSimilarAlerts] =
+  useState<SimilarAlertHit[]>([]);
+
+const [similarLoading, setSimilarLoading] =
+  useState(false);
+
+const [similarError, setSimilarError] =
+  useState<string | null>(null);
 
   const loadCopilot = async (force: boolean) => {
-    setCopilotLoading(true);
-    setCopilotError(null);
-    const result = await fetchCopilotSuggestion(alert.id, force);
-    if (result) {
-      setCopilot(result);
+  copilotController?.abort();
+
+  const controller = new AbortController();
+
+  setCopilotController(controller);
+  setCopilotLoading(true);
+  setCopilotError(null);
+  setCopilotCanRetry(false);
+
+  const timeoutId = window.setTimeout(() => {
+    controller.abort();
+  }, 35000);
+
+  try {
+    const result = await fetchCopilotSuggestion(
+      alert.id,
+      force,
+      controller.signal,
+    );
+
+    setCopilot(result);
+    setCopilotCanRetry(false);
+  } catch (error) {
+    console.error(
+      'Failed to generate Copilot suggestion:',
+      error,
+    );
+
+    setCopilot(null);
+
+    if (
+      error instanceof DOMException &&
+      error.name === 'AbortError'
+    ) {
+      setCopilotError(
+        'The Copilot request took too long or was cancelled. Please try again.',
+      );
+      setCopilotCanRetry(true);
+    } else if (error instanceof CopilotRequestError) {
+      setCopilotError(error.message);
+      setCopilotCanRetry(error.retryable);
     } else {
-      setCopilotError('Could not generate a suggestion. Is the copilot configured?');
+      setCopilotError(
+        'Unable to generate a Copilot suggestion. Please try again.',
+      );
+      setCopilotCanRetry(true);
     }
+  } finally {
+    window.clearTimeout(timeoutId);
+
+    setCopilotController((current) =>
+      current === controller ? null : current
+    );
+
     setCopilotLoading(false);
+  }
+};
+
+  const loadSimilarAlerts = async () => {
+    setSimilarLoading(true);
+    setSimilarError(null);
+
+    try {
+      const result = await fetchSimilarAlerts(alert.id);
+
+      setSimilarAlerts(result.hits);
+    } catch (error) {
+      console.error(
+        'Failed to load similar alerts:',
+        error,
+      );
+
+      setSimilarError(
+        'Could not load similar past alerts.',
+      );
+    } finally {
+      setSimilarLoading(false);
+    }
   };
 
   const confidenceBadge = (c: string | null) => {
@@ -233,10 +314,30 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
   };
 
   const handleDelete = async (id: string) => {
+    const confirmed = window.confirm(
+      'Are you sure you want to delete this note? This action cannot be undone.'
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
     setNoteError(null);
-    const ok = await deleteAlertNote(alert.id, id);
-    if (ok) setNotes((prev) => prev.filter((n) => n.id !== id));
-    else setNoteError('Could not delete the note — try again.');
+
+    const ok = await deleteAlertNote(
+      alert.id,
+      id,
+    );
+
+    if (ok) {
+      setNotes((prev) =>
+        prev.filter((note) => note.id !== id)
+      );
+    } else {
+      setNoteError(
+        'Could not delete the note — try again.'
+      );
+    }
   };
 
   // Chat order: oldest first, newest at the bottom.
@@ -656,18 +757,62 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
                 </button>
               )}
 
-              {copilotError && (
-                <p className="text-sm text-red-400">{copilotError}</p>
+              {copilotLoading && copilotController && (
+                <button
+                  type="button"
+                  onClick={() => copilotController.abort()}
+                  className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-medium text-slate-400 transition hover:border-red-500/40 hover:text-red-300"
+                >
+                  <i className="fas fa-stop mr-2"></i>
+                  Cancel request
+                </button>
               )}
 
-              {copilot && !copilot.precedent_found && (
+              {copilotError && (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3">
+                  <div className="flex items-start gap-2">
+                    <i className="fas fa-triangle-exclamation mt-0.5 text-red-400 text-xs"></i>
+
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-red-300">
+                        Copilot could not generate a suggestion
+                      </p>
+
+                      <p className="mt-1 text-xs text-red-400/80">
+                        {copilotError}
+                      </p>
+
+                      {copilotCanRetry && (
+                        <button
+                          type="button"
+                          onClick={() => loadCopilot(true)}
+                          disabled={copilotLoading}
+                          className="mt-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <i
+                            className={`fas ${
+                              copilotLoading
+                                ? 'fa-spinner fa-spin'
+                                : 'fa-rotate-right'
+                            } mr-2`}
+                          ></i>
+
+                          {copilotLoading ? 'Retrying...' : 'Retry'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {copilot && !copilotError && !copilot.precedent_found && (
                 <div className="text-sm text-slate-400 flex items-start gap-2">
                   <i className="fas fa-circle-info mt-0.5"></i>
                   <span>No similar past alerts found — not enough precedent to suggest a fix.</span>
                 </div>
               )}
 
-              {copilot && copilot.precedent_found && (
+              {copilot && !copilotError && copilot.precedent_found && (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
                     <span className={`px-2 py-1 rounded border ${confidenceBadge(copilot.confidence)}`}>
@@ -699,13 +844,39 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
                                   {step.citations.map((n) => {
                                     const c = citationByNumber(n);
                                     return (
-                                      <span
+                                      <button
                                         key={n}
-                                        title={c ? `${c.source_type} · ${(c.similarity * 100).toFixed(0)}% match\n\n${c.preview}` : `Source ${n}`}
-                                        className="px-1.5 py-0.5 rounded bg-purple-500/15 border border-purple-500/30 text-purple-300 text-[10px] font-medium cursor-help"
+                                        type="button"
+                                        title={
+                                          c
+                                            ? `${c.source_type} · ${(c.similarity * 100).toFixed(0)}% match\n\n${c.preview}`
+                                            : `Source ${n}`
+                                        }
+                                        disabled={!c}
+                                        onClick={async () => {
+                                          if (!c) return;
+
+                                          if (c.source_type === 'alert') {
+                                            const precedentAlert = await fetchAlert(c.source_id);
+
+                                            if (precedentAlert) {
+                                              onSelectAlert?.(precedentAlert);
+                                            }
+
+                                            return;
+                                          }
+
+                                          if (c.source_type === 'incident') {
+                                            window.location.href = `/incidents/${c.source_id}`;
+                                          }
+                                        }}
+                                        className="px-1.5 py-0.5 rounded bg-purple-500/15 border border-purple-500/30 text-purple-300 text-[10px] font-medium transition hover:bg-purple-500/25 hover:border-purple-400/50 disabled:cursor-default disabled:opacity-60"
                                       >
                                         [{n}] {c?.source_type ?? 'source'}
-                                      </span>
+                                        {c && (
+                                          <i className="fas fa-arrow-up-right-from-square ml-1 text-[8px]"></i>
+                                        )}
+                                      </button>
                                     );
                                   })}
                                 </span>
@@ -724,6 +895,110 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
                   >
                     <i className={`fas ${copilotLoading ? 'fa-spinner fa-spin' : 'fa-rotate'} text-xs`}></i>
                     {copilotLoading ? 'Regenerating...' : 'Regenerate'}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Similar historical alerts */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-[10px] font-bold text-slate-500 uppercase">
+                Similar Past Alerts
+              </label>
+
+              {similarAlerts.length > 0 && (
+                <span className="text-[10px] text-slate-500">
+                  {similarAlerts.length} found
+                </span>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-slate-700 bg-slate-900 p-3">
+              {similarAlerts.length === 0 && !similarLoading && (
+                <button
+                  type="button"
+                  onClick={loadSimilarAlerts}
+                  className="w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-700"
+                >
+                  <i className="fas fa-magnifying-glass mr-2 text-xs"></i>
+                  Find similar alerts
+                </button>
+              )}
+
+              {similarLoading && (
+                <div className="flex items-center justify-center gap-2 py-3 text-xs text-slate-400">
+                  <i className="fas fa-circle-notch fa-spin"></i>
+                  Searching historical alerts...
+                </div>
+              )}
+
+              {similarError && (
+                <div className="space-y-2">
+                  <p className="text-xs text-red-400">
+                    {similarError}
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={loadSimilarAlerts}
+                    className="text-xs font-medium text-purple-300 hover:text-purple-200"
+                  >
+                    Try again
+                  </button>
+                </div>
+              )}
+
+              {similarAlerts.length > 0 && (
+                <div className="space-y-2">
+                  {similarAlerts.map((hit) => (
+                    <button
+                      key={`${hit.source_type}-${hit.source_id}-${hit.chunk_index}`}
+                      type="button"
+                      onClick={async () => {
+                        if (hit.source_type === 'alert') {
+                          const similarAlert = await fetchAlert(hit.source_id);
+
+                          if (similarAlert) {
+                            onSelectAlert?.(similarAlert);
+                          }
+                        } else if (hit.source_type === 'incident') {
+                          window.location.href =
+                            `/incidents/${hit.source_id}`;
+                        }
+                      }}
+                      className="w-full rounded-lg border border-slate-800 bg-slate-950 p-3 text-left transition hover:border-purple-500/40 hover:bg-slate-900"
+                    >
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-bold uppercase text-purple-300">
+                          {hit.source_type}
+                        </span>
+
+                        <span className="text-[10px] font-semibold text-slate-400">
+                          {(hit.similarity * 100).toFixed(0)}% match
+                        </span>
+                      </div>
+
+                      <p className="line-clamp-3 text-xs leading-relaxed text-slate-300">
+                        {hit.content}
+                      </p>
+
+                      <div className="mt-2 flex items-center gap-1 text-[10px] text-slate-500">
+                        <span>Open precedent</span>
+                        <i className="fas fa-arrow-right text-[8px]"></i>
+                      </div>
+                    </button>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={loadSimilarAlerts}
+                    disabled={similarLoading}
+                    className="w-full pt-1 text-xs font-medium text-slate-500 transition hover:text-slate-300"
+                  >
+                    <i className="fas fa-rotate-right mr-1"></i>
+                    Refresh similar alerts
                   </button>
                 </div>
               )}

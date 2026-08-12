@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { login, loginWithGoogle } from '../services/authApi';
+import { consumeReturnUrl } from '../services/apiClient';
 import { GoogleLogin } from '@react-oauth/google';
 
 export default function LoginPage() {
@@ -22,7 +23,8 @@ export default function LoginPage() {
     const user = await login(username, password);
     setSubmitting(false);
     if (user) {
-      router.replace('/');
+      const returnUrl = consumeReturnUrl();
+      router.replace(returnUrl || '/');
     } else {
       setError('Incorrect username or password');
     }
@@ -44,8 +46,9 @@ export default function LoginPage() {
     setGoogleSubmitting(false);
 
     if (user) {
-      router.replace('/');
-    } else {
+    const returnUrl = consumeReturnUrl();
+    router.replace(returnUrl || '/');
+  } else {
       setError('Could not sign in with Google. Please try again.');
     }
   };

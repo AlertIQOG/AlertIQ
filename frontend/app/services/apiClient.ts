@@ -12,6 +12,7 @@ export const API_BASE_URL =
 
 const TOKEN_KEY = 'alertiq-auth-token';
 const USER_KEY = 'alertiq-auth-user';
+const RETURN_URL_KEY = 'alertiq-return-url';
 
 export interface AuthUser {
   id: string;
@@ -33,6 +34,40 @@ export function setSession(token: string, user: AuthUser): void {
 export function clearSession(): void {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+}
+
+export function saveReturnUrl(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const returnUrl =
+    `${window.location.pathname}${window.location.search}`;
+
+  if (
+    returnUrl &&
+    returnUrl !== '/login'
+  ) {
+    sessionStorage.setItem(
+      RETURN_URL_KEY,
+      returnUrl,
+    );
+  }
+}
+
+export function consumeReturnUrl(): string | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const returnUrl =
+    sessionStorage.getItem(RETURN_URL_KEY);
+
+  sessionStorage.removeItem(
+    RETURN_URL_KEY,
+  );
+
+  return returnUrl;
 }
 
 export function getStoredUser(): AuthUser | null {
@@ -74,8 +109,16 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
 
   const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
 
-  if (response.status === 401 && typeof window !== 'undefined') {
+  if (
+    response.status === 401 &&
+    typeof window !== 'undefined'
+  ) {
+    if (window.location.pathname !== '/login') {
+      saveReturnUrl();
+    }
+
     clearSession();
+
     if (window.location.pathname !== '/login') {
       window.location.href = '/login';
     }
