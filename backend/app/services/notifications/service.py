@@ -27,31 +27,111 @@ class NotificationService:
         channels: list[NotificationChannelName],
         to: str | None = None,
     ) -> list[ChannelResult]:
-        """Send to each requested channel, isolating failures so one bad channel
-        does not block the others. Returns a per-channel result."""
+        """Send a message to all requested notification channels.
+
+        Each channel is isolated so one failure does not prevent the remaining
+        channels from being attempted. Failures are logged explicitly and are
+        also returned to the caller for rule-level visibility.
+        """
         results: list[ChannelResult] = []
 
         for name in channels:
             channel = self._channels.get(name)
 
             if channel is None:
+                detail = "unknown channel"
+
+                logger.error(
+                    "Notification channel %s does not exist",
+                    name,
+                )
+
                 results.append(
-                    ChannelResult(channel=name, ok=False, detail="unknown channel")
+                    ChannelResult(
+                        channel=name,
+                        ok=False,
+                        detail=detail,
+                    )
                 )
                 continue
 
             if not channel.is_configured():
+                detail = "not configured"
+
+                logger.error(
+                    "Notification channel %s is not configured",
+                    name,
+                )
+
                 results.append(
-                    ChannelResult(channel=name, ok=False, detail="not configured")
+                    ChannelResult(
+                        channel=name,
+                        ok=False,
+                        detail=detail,
+                    )
                 )
                 continue
 
             try:
-                channel.send(message, to=to)
-                results.append(ChannelResult(channel=name, ok=True, detail="sent"))
+                channel.send(
+                    message,
+                    to=to,
+                )
+
+                logger.info(
+                    "Notification sent successfully via %s",
+                    name,
+                )
+
+                results.append(
+                    ChannelResult(
+                        channel=name,
+                        ok=True,
+                        detail="sent",
+                    )
+                )
+
             except NotificationError as exc:
-                logger.warning("Notification via %s failed: %s", name, exc.detail)
-                results.append(ChannelResult(channel=name, ok=False, detail=exc.detail))
+                logger.error(
+                    "Notification via %s failed: %s",
+                    name,
+                    exc.detail,
+                )
+
+                results.append(
+                    ChannelResult(
+                        channel=name,
+                        ok=False,
+                        detail=exc.detail,
+                    )
+                )
+
+            except Exception as exc:  # noqa: BLE001
+                logger.exception(
+                    "Unexpected notification failure via %s",
+                    name,
+                )
+
+                results.append(
+                    ChannelResult(
+                        channel=name,
+                        ok=False,
+                        detail=f"unexpected error: {exc}",
+                    )
+                )
+
+        failed = [
+            result
+            for result in results
+            if not result.ok
+        ]
+
+        if failed:
+            logger.error(
+                "Notification dispatch completed with %d/%d failed channel(s)",
+                len(failed),
+                len(results),
+            )
 
         return results
 

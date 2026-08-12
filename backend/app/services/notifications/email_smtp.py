@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.core.exceptions import NotificationError
 from app.schemas.notification import NotificationMessage
 
+SMTP_TIMEOUT_SECONDS = 5
 
 class EmailChannel:
     """Sends messages as email over SMTP (e.g. Gmail with an App Password)."""
@@ -33,13 +34,24 @@ class EmailChannel:
 
         try:
             host, port = settings.SMTP_HOST, settings.SMTP_PORT
-            with smtplib.SMTP(host, port, timeout=15) as smtp:
+            with smtplib.SMTP(
+                host,
+                port,
+                timeout=SMTP_TIMEOUT_SECONDS,
+            ) as smtp:
                 if settings.SMTP_USE_TLS:
                     smtp.starttls()
                 smtp.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
                 smtp.send_message(email)
+        except TimeoutError as exc:
+            raise NotificationError(
+                f"Email send timed out after {SMTP_TIMEOUT_SECONDS}s"
+            ) from exc
+
         except (smtplib.SMTPException, OSError) as exc:
-            raise NotificationError(f"Email send failed: {exc}") from exc
+            raise NotificationError(
+                f"Email send failed: {exc}"
+            ) from exc
 
 
 email_channel = EmailChannel()

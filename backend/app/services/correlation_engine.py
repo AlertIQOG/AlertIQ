@@ -402,22 +402,74 @@ class CorrelationEngine:
             self._notifier = notify_correlation
         return self._notifier
 
-    def _dispatch_email(self, rule: CorrelationRule, alert: Alert) -> None:
-        """Send the rule's email notification, isolating failures so a broken
-        mailer never drops the alert or blocks aggregation.
+    def _dispatch_email(
+        self,
+        rule: CorrelationRule,
+        alert: Alert,
+    ) -> bool:
+        """Dispatch the email action for a matching correlation rule.
 
-        The rule's ``email_recipients`` become the message's ``To`` (comma
-        separated). When empty, ``to`` is ``None`` and the email channel falls
-        back to the global ``EMAIL_DEFAULT_TO``.
+        Notification failures never break correlation itself, but they are
+        surfaced clearly in logs and reported to the caller as a boolean.
         """
-        recipients = getattr(rule, "email_recipients", None) or []
+        recipients = getattr(
+            rule,
+            "email_recipients",
+            None,
+        ) or []
+
         to = ",".join(recipients) if recipients else None
+
         try:
-            self.notifier(rule, [alert], channels=["email"], to=to)
-        except Exception:  # noqa: BLE001 — notification must not break correlation
-            logger.exception(
-                "Email action failed — rule=%s alert=%s", rule.name, alert.id
+            results = self.notifier(
+                rule,
+                [alert],
+                channels=["email"],
+                to=to,
             )
+
+            if results is None:
+                logger.warning(
+                    "Email notifier returned no delivery results — rule=%s alert=%s",
+                    rule.name,
+                    alert.id,
+                )
+                return False
+
+            failures = [
+                result
+                for result in results
+                if not getattr(result, "ok", False)
+            ]
+
+            if failures:
+                logger.error(
+                    "Email action failed — rule=%s alert=%s failures=%s",
+                    rule.name,
+                    alert.id,
+                    [
+                        getattr(result, "detail", "unknown failure")
+                        for result in failures
+                    ],
+                )
+                return False
+
+            logger.info(
+                "Email action succeeded — rule=%s alert=%s recipients=%s",
+                rule.name,
+                alert.id,
+                recipients or ["default"],
+            )
+
+            return True
+
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Email action crashed — rule=%s alert=%s",
+                rule.name,
+                alert.id,
+            )
+            return False
 
     def process_alert(
         self,
