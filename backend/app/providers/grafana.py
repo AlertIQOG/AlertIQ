@@ -151,6 +151,8 @@ class GrafanaNormalizer:
                     application=application,
                     component=component,
                     region=region,
+                    node_name=labels.get("instance"),
+                    operator=labels.get("operator"),
                     extra_fields=extra_fields,
                 )
             )

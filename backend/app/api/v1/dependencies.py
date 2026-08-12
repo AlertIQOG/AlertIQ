@@ -76,9 +76,19 @@ def verify_webhook_token(
             "Source has no webhook secret configured — set one to enable ingest"
         )
 
-    if x_webhook_token is None or not secrets.compare_digest(
-        x_webhook_token, source.webhook_secret
+    provided_token = (
+        x_webhook_token.encode("utf-8")
+        if x_webhook_token is not None
+        else None
+    )
+
+    expected_token = source.webhook_secret.encode("utf-8")
+
+    if provided_token is None or not secrets.compare_digest(
+        provided_token,
+        expected_token,
     ):
+        
         raise AuthenticationError("Invalid webhook token")
 
     if not source.is_active:
