@@ -215,6 +215,35 @@ def index_incident(session: Session, incident: Incident) -> tuple[RagChunk, bool
         content=content,
     )
 
+def delete_alert_chunks(
+    session: Session,
+    alert_id: uuid.UUID,
+) -> int:
+    """Delete all RAG chunks that belong to a deleted alert."""
+    chunks = list(
+        session.exec(
+            select(RagChunk).where(
+                RagChunk.source_type == "alert",
+                RagChunk.source_id == alert_id,
+            )
+        ).all()
+    )
+
+    if not chunks:
+        return 0
+
+    for chunk in chunks:
+        session.delete(chunk)
+
+    session.commit()
+
+    logger.info(
+        "Deleted %d RAG chunk(s) for alert %s",
+        len(chunks),
+        alert_id,
+    )
+
+    return len(chunks)
 
 # ── Best-effort live triggers ─────────────────────────────────────────
 # Wrapped so a missing key or a Voyage outage logs and is swallowed rather

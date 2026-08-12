@@ -13,7 +13,10 @@ from app.models.alert import Alert, AlertSeverity, AlertStatus
 from app.schemas.alert import AlertCreate
 from app.services.base import CRUDBase
 from app.services.events import event_bus
-from app.services.rag.indexer import safe_index_alert
+from app.services.rag.indexer import (
+    delete_alert_chunks,
+    safe_index_alert,
+)
 
 
 class AlertService(CRUDBase[Alert]):
@@ -222,10 +225,26 @@ class AlertService(CRUDBase[Alert]):
         return updated
 
     def remove(self, session: Session, *, id: uuid.UUID) -> Alert | None:
-        """Delete an alert, notifying live subscribers on success."""
-        removed = super().remove(session, id=id)
+        """Delete an alert and remove its RAG chunks."""
+
+        alert = self.get(session, id=id)
+
+        if alert is None:
+            return None
+
+        delete_alert_chunks(
+            session,
+            alert_id=id,
+        )
+
+        removed = super().remove(
+            session,
+            id=id,
+        )
+
         if removed is not None:
             event_bus.publish("alert.deleted", id)
+
         return removed
 
 

@@ -15,6 +15,8 @@ from app.core.config import settings
 from app.core.exceptions import ConfigurationError, GenerationError
 from app.services.rag.retriever import RetrievalHit
 
+_LLM_TIMEOUT_SECONDS = 30.0
+
 _TOOL_NAME = "provide_resolution_suggestion"
 
 # The fixed result shape, shared by both providers. Per-step ``citations`` are a
@@ -160,7 +162,11 @@ class GenerationService:
         import anthropic
 
         if self._anthropic is None:
-            self._anthropic = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+            self._anthropic = anthropic.Anthropic(
+                api_key=settings.ANTHROPIC_API_KEY,
+                timeout=_LLM_TIMEOUT_SECONDS,
+                max_retries=1,
+            )
 
         response = self._anthropic.messages.create(
             model=settings.CLAUDE_MODEL,
@@ -191,7 +197,12 @@ class GenerationService:
         from google.genai import types
 
         if self._google is None:
-            self._google = genai.Client(api_key=settings.GOOGLE_API_KEY)
+            self._google = genai.Client(
+                api_key=settings.GOOGLE_API_KEY,
+                http_options=types.HttpOptions(
+                    timeout=int(_LLM_TIMEOUT_SECONDS * 1000),
+                ),
+            )
 
         response = self._google.models.generate_content(
             model=settings.GEMINI_MODEL,

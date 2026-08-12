@@ -162,43 +162,67 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotError, setCopilotError] = useState<string | null>(null);
   const [copilotCanRetry, setCopilotCanRetry] = useState(false);
+  const [copilotController, setCopilotController] =
+  useState<AbortController | null>(null);
 
   const loadCopilot = async (force: boolean) => {
-    setCopilotLoading(true);
-    setCopilotError(null);
+  copilotController?.abort();
+
+  const controller = new AbortController();
+
+  setCopilotController(controller);
+  setCopilotLoading(true);
+  setCopilotError(null);
+  setCopilotCanRetry(false);
+
+  const timeoutId = window.setTimeout(() => {
+    controller.abort();
+  }, 35000);
+
+  try {
+    const result = await fetchCopilotSuggestion(
+      alert.id,
+      force,
+      controller.signal,
+    );
+
+    setCopilot(result);
     setCopilotCanRetry(false);
+  } catch (error) {
+    console.error(
+      'Failed to generate Copilot suggestion:',
+      error,
+    );
 
-    try {
-      const result = await fetchCopilotSuggestion(
-        alert.id,
-        force,
+    setCopilot(null);
+
+    if (
+      error instanceof DOMException &&
+      error.name === 'AbortError'
+    ) {
+      setCopilotError(
+        'The Copilot request took too long or was cancelled. Please try again.',
       );
-
-      setCopilot(result);
-      setCopilotCanRetry(false);
-    } catch (error) {
-      console.error(
-        'Failed to generate Copilot suggestion:',
-        error,
+      setCopilotCanRetry(true);
+    } else if (error instanceof CopilotRequestError) {
+      setCopilotError(error.message);
+      setCopilotCanRetry(error.retryable);
+    } else {
+      setCopilotError(
+        'Unable to generate a Copilot suggestion. Please try again.',
       );
-
-      // Do not leave a previous successful suggestion visible
-      // when the latest request has failed.
-      setCopilot(null);
-
-      if (error instanceof CopilotRequestError) {
-        setCopilotError(error.message);
-        setCopilotCanRetry(error.retryable);
-      } else {
-        setCopilotError(
-          'Unable to generate a Copilot suggestion. Please try again.',
-        );
-        setCopilotCanRetry(true);
-      }
-    } finally {
-      setCopilotLoading(false);
+      setCopilotCanRetry(true);
     }
-  };
+  } finally {
+    window.clearTimeout(timeoutId);
+
+    setCopilotController((current) =>
+      current === controller ? null : current
+    );
+
+    setCopilotLoading(false);
+  }
+};
 
   const confidenceBadge = (c: string | null) => {
     if (c === 'high') return 'text-green-400 border-green-500/30 bg-green-500/10';
@@ -679,6 +703,17 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
                 >
                   <i className={`fas ${copilotLoading ? 'fa-spinner fa-spin' : 'fa-magic'} text-xs`}></i>
                   {copilotLoading ? 'Analyzing...' : 'Generate suggestion'}
+                </button>
+              )}
+
+              {copilotLoading && copilotController && (
+                <button
+                  type="button"
+                  onClick={() => copilotController.abort()}
+                  className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-medium text-slate-400 transition hover:border-red-500/40 hover:text-red-300"
+                >
+                  <i className="fas fa-stop mr-2"></i>
+                  Cancel request
                 </button>
               )}
 
