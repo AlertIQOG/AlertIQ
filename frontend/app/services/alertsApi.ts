@@ -324,3 +324,37 @@ export async function fetchCopilotSuggestion(
 
   return data as CopilotSuggestion;
 }
+
+export interface SimilarAlertHit {
+  source_type: string;
+  source_id: string;
+  chunk_index: number;
+  similarity: number;
+  content: string;
+}
+
+export interface SimilarAlertsResponse {
+  alert_id: string;
+  query_text: string;
+  precedent_found: boolean;
+  hits: SimilarAlertHit[];
+}
+
+export async function fetchSimilarAlerts(
+  alertId: string,
+  signal?: AbortSignal,
+): Promise<SimilarAlertsResponse> {
+  const path = `/alerts/${alertId}/similar`;
+
+  const response = await apiFetch(path, {
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to load similar alerts: ${response.status}`,
+    );
+  }
+
+  return await response.json() as SimilarAlertsResponse;
+}

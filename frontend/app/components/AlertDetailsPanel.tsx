@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Alert, AlertNote } from './../types/alert';
 import { CopilotSuggestion } from '../types/copilot';
-import { fetchAlert, fetchAlertNotes, addAlertNote, updateAlertNote, deleteAlertNote, updateAlertAssignee, fetchCopilotSuggestion, fetchAlertChildren, CopilotRequestError} from '../services/alertsApi';
+import { fetchAlert, fetchAlertNotes, addAlertNote, updateAlertNote, deleteAlertNote, updateAlertAssignee, fetchCopilotSuggestion, fetchAlertChildren,fetchSimilarAlerts,SimilarAlertHit, CopilotRequestError} from '../services/alertsApi';
 import { getStoredUser } from '../services/apiClient';
 import { fetchAllUsers } from '../services/usersApi';
 import AlertRawDataModal from './AlertRawDataModal';
@@ -165,6 +165,15 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
   const [copilotController, setCopilotController] =
   useState<AbortController | null>(null);
 
+  const [similarAlerts, setSimilarAlerts] =
+  useState<SimilarAlertHit[]>([]);
+
+const [similarLoading, setSimilarLoading] =
+  useState(false);
+
+const [similarError, setSimilarError] =
+  useState<string | null>(null);
+
   const loadCopilot = async (force: boolean) => {
   copilotController?.abort();
 
@@ -223,6 +232,28 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
     setCopilotLoading(false);
   }
 };
+
+  const loadSimilarAlerts = async () => {
+    setSimilarLoading(true);
+    setSimilarError(null);
+
+    try {
+      const result = await fetchSimilarAlerts(alert.id);
+
+      setSimilarAlerts(result.hits);
+    } catch (error) {
+      console.error(
+        'Failed to load similar alerts:',
+        error,
+      );
+
+      setSimilarError(
+        'Could not load similar past alerts.',
+      );
+    } finally {
+      setSimilarLoading(false);
+    }
+  };
 
   const confidenceBadge = (c: string | null) => {
     if (c === 'high') return 'text-green-400 border-green-500/30 bg-green-500/10';
@@ -818,6 +849,110 @@ export default function AlertDetailsPanel({ alert, onClose, onStatusChange, onAl
                   >
                     <i className={`fas ${copilotLoading ? 'fa-spinner fa-spin' : 'fa-rotate'} text-xs`}></i>
                     {copilotLoading ? 'Regenerating...' : 'Regenerate'}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Similar historical alerts */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-[10px] font-bold text-slate-500 uppercase">
+                Similar Past Alerts
+              </label>
+
+              {similarAlerts.length > 0 && (
+                <span className="text-[10px] text-slate-500">
+                  {similarAlerts.length} found
+                </span>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-slate-700 bg-slate-900 p-3">
+              {similarAlerts.length === 0 && !similarLoading && (
+                <button
+                  type="button"
+                  onClick={loadSimilarAlerts}
+                  className="w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-700"
+                >
+                  <i className="fas fa-magnifying-glass mr-2 text-xs"></i>
+                  Find similar alerts
+                </button>
+              )}
+
+              {similarLoading && (
+                <div className="flex items-center justify-center gap-2 py-3 text-xs text-slate-400">
+                  <i className="fas fa-circle-notch fa-spin"></i>
+                  Searching historical alerts...
+                </div>
+              )}
+
+              {similarError && (
+                <div className="space-y-2">
+                  <p className="text-xs text-red-400">
+                    {similarError}
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={loadSimilarAlerts}
+                    className="text-xs font-medium text-purple-300 hover:text-purple-200"
+                  >
+                    Try again
+                  </button>
+                </div>
+              )}
+
+              {similarAlerts.length > 0 && (
+                <div className="space-y-2">
+                  {similarAlerts.map((hit) => (
+                    <button
+                      key={`${hit.source_type}-${hit.source_id}-${hit.chunk_index}`}
+                      type="button"
+                      onClick={async () => {
+                        if (hit.source_type === 'alert') {
+                          const similarAlert = await fetchAlert(hit.source_id);
+
+                          if (similarAlert) {
+                            onSelectAlert?.(similarAlert);
+                          }
+                        } else if (hit.source_type === 'incident') {
+                          window.location.href =
+                            `/incidents/${hit.source_id}`;
+                        }
+                      }}
+                      className="w-full rounded-lg border border-slate-800 bg-slate-950 p-3 text-left transition hover:border-purple-500/40 hover:bg-slate-900"
+                    >
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-bold uppercase text-purple-300">
+                          {hit.source_type}
+                        </span>
+
+                        <span className="text-[10px] font-semibold text-slate-400">
+                          {(hit.similarity * 100).toFixed(0)}% match
+                        </span>
+                      </div>
+
+                      <p className="line-clamp-3 text-xs leading-relaxed text-slate-300">
+                        {hit.content}
+                      </p>
+
+                      <div className="mt-2 flex items-center gap-1 text-[10px] text-slate-500">
+                        <span>Open precedent</span>
+                        <i className="fas fa-arrow-right text-[8px]"></i>
+                      </div>
+                    </button>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={loadSimilarAlerts}
+                    disabled={similarLoading}
+                    className="w-full pt-1 text-xs font-medium text-slate-500 transition hover:text-slate-300"
+                  >
+                    <i className="fas fa-rotate-right mr-1"></i>
+                    Refresh similar alerts
                   </button>
                 </div>
               )}
