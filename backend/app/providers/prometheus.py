@@ -7,7 +7,7 @@ Converts native Prometheus Alertmanager payloads into ``AlertCreate`` objects.
 import uuid
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.alert import AlertSeverity, AlertStatus
 from app.schemas.alert import AlertCreate
@@ -36,6 +36,10 @@ class PrometheusAlert(BaseModel):
     generatorURL: str | None = None
     fingerprint: str = ""
 
+    @field_validator("labels", "annotations", mode="before")
+    @classmethod
+    def coerce_optional_dicts(cls, value: Any) -> dict[str, str]:
+        return value or {}
 
 class PrometheusWebhook(BaseModel):
     receiver: str = ""
@@ -48,6 +52,21 @@ class PrometheusWebhook(BaseModel):
     version: str = ""
     groupKey: str = ""
     truncatedAlerts: int = 0
+
+    @field_validator("alerts", mode="before")
+    @classmethod
+    def coerce_alerts(cls, value: Any) -> list[Any]:
+        return value or []
+
+    @field_validator(
+        "groupLabels",
+        "commonLabels",
+        "commonAnnotations",
+        mode="before",
+    )
+    @classmethod
+    def coerce_webhook_dicts(cls, value: Any) -> dict[str, str]:
+        return value or {}
 
 
 class PrometheusNormalizer:

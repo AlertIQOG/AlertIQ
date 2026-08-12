@@ -3,6 +3,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, status
+from sqlalchemy import text
 
 from app.api.v1.dependencies import DbSession, PaginationParams
 from app.core.exceptions import ConflictError, NotFoundError
@@ -38,7 +39,24 @@ def create_incident(*, session: DbSession, body: IncidentCreate) -> IncidentRead
     if linked and data.get("linked_alert_id") is None:
         data["linked_alert_id"] = linked[0]
 
-    already_open = incident_service.open_incident_by_alert(session)
+    # Serialize concurrent promotions of the same alert(s).
+    # PostgreSQL transaction advisory locks are released automatically
+    # when this transaction commits or rolls back.
+    for alert_id in sorted(linked, key=str):
+        lock_key = f"incident-alert:{alert_id}"
+
+        session.execute(
+            text(
+                "SELECT pg_advisory_xact_lock("
+                "hashtextextended(:lock_key, 0)"
+                ")"
+            ),
+            {"lock_key": lock_key},
+        )
+    already_open = incident_service.open_incident_by_alert(
+        session,
+        alert_ids=linked,
+    )
     clashing = [aid for aid in linked if aid in already_open]
     if clashing:
         raise ConflictError(

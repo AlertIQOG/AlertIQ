@@ -314,10 +314,30 @@ const [similarError, setSimilarError] =
   };
 
   const handleDelete = async (id: string) => {
+    const confirmed = window.confirm(
+      'Are you sure you want to delete this note? This action cannot be undone.'
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
     setNoteError(null);
-    const ok = await deleteAlertNote(alert.id, id);
-    if (ok) setNotes((prev) => prev.filter((n) => n.id !== id));
-    else setNoteError('Could not delete the note — try again.');
+
+    const ok = await deleteAlertNote(
+      alert.id,
+      id,
+    );
+
+    if (ok) {
+      setNotes((prev) =>
+        prev.filter((note) => note.id !== id)
+      );
+    } else {
+      setNoteError(
+        'Could not delete the note — try again.'
+      );
+    }
   };
 
   // Chat order: oldest first, newest at the bottom.
@@ -824,13 +844,39 @@ const [similarError, setSimilarError] =
                                   {step.citations.map((n) => {
                                     const c = citationByNumber(n);
                                     return (
-                                      <span
+                                      <button
                                         key={n}
-                                        title={c ? `${c.source_type} · ${(c.similarity * 100).toFixed(0)}% match\n\n${c.preview}` : `Source ${n}`}
-                                        className="px-1.5 py-0.5 rounded bg-purple-500/15 border border-purple-500/30 text-purple-300 text-[10px] font-medium cursor-help"
+                                        type="button"
+                                        title={
+                                          c
+                                            ? `${c.source_type} · ${(c.similarity * 100).toFixed(0)}% match\n\n${c.preview}`
+                                            : `Source ${n}`
+                                        }
+                                        disabled={!c}
+                                        onClick={async () => {
+                                          if (!c) return;
+
+                                          if (c.source_type === 'alert') {
+                                            const precedentAlert = await fetchAlert(c.source_id);
+
+                                            if (precedentAlert) {
+                                              onSelectAlert?.(precedentAlert);
+                                            }
+
+                                            return;
+                                          }
+
+                                          if (c.source_type === 'incident') {
+                                            window.location.href = `/incidents/${c.source_id}`;
+                                          }
+                                        }}
+                                        className="px-1.5 py-0.5 rounded bg-purple-500/15 border border-purple-500/30 text-purple-300 text-[10px] font-medium transition hover:bg-purple-500/25 hover:border-purple-400/50 disabled:cursor-default disabled:opacity-60"
                                       >
                                         [{n}] {c?.source_type ?? 'source'}
-                                      </span>
+                                        {c && (
+                                          <i className="fas fa-arrow-up-right-from-square ml-1 text-[8px]"></i>
+                                        )}
+                                      </button>
                                     );
                                   })}
                                 </span>

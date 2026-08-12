@@ -19,6 +19,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import text
 from sqlmodel import Session, select
 
 from app.models.aggregated_alert import AggregatedAlert, AggregatedAlertStatus
@@ -83,13 +84,72 @@ class AggregatedAlertService(CRUDBase[AggregatedAlert]):
         group_values: dict[str, Any],
         now: datetime,
     ) -> AggregatedAlert:
-        """Open a new aggregate seeded with ``alert`` as its first member."""
-        aggregate = build_aggregate(rule, alert, group_key, group_values, now)
+        """Open an aggregate, safely handling concurrent webhook delivery.
+
+        Only one transaction may create an OPEN aggregate for a given
+        ``(rule_id, group_key)`` pair at a time. If another request created
+        the aggregate while this request was waiting, the alert is folded
+        into that existing aggregate instead.
+        """
+
+        lock_key = f"aggregate:{rule.id}:{group_key}"
+
+        session.execute(
+            text(
+                "SELECT pg_advisory_xact_lock("
+                "hashtextextended(:lock_key, 0)"
+                ")"
+            ),
+            {"lock_key": lock_key},
+        )
+
+        # Re-check after acquiring the lock. Another webhook may have created
+        # this aggregate after the caller's initial find_open().
+        existing = self.find_open(
+            session,
+            rule_id=rule.id,
+            group_key=group_key,
+        )
+
+        if existing is not None:
+            logger.info(
+                "Concurrent aggregate creation avoided — "
+                "rule=%s group_key=%s existing=%s",
+                rule.name,
+                group_key,
+                existing.id,
+            )
+
+            return self.add_member(
+                session,
+                aggregate=existing,
+                alert=alert,
+                now=now,
+            )
+
+        aggregate = build_aggregate(
+            rule,
+            alert,
+            group_key,
+            group_values,
+            now,
+        )
+
         session.add(aggregate)
         session.commit()
         session.refresh(aggregate)
-        self.sync_summary(session, aggregate=aggregate, member=alert)
-        event_bus.publish("aggregate.created", aggregate.id)
+
+        self.sync_summary(
+            session,
+            aggregate=aggregate,
+            member=alert,
+        )
+
+        event_bus.publish(
+            "aggregate.created",
+            aggregate.id,
+        )
+
         return aggregate
 
     def add_member(

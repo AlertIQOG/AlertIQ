@@ -12,6 +12,7 @@ export const API_BASE_URL =
 
 const TOKEN_KEY = 'alertiq-auth-token';
 const USER_KEY = 'alertiq-auth-user';
+const RETURN_URL_KEY = 'alertiq-return-url';
 
 export interface AuthUser {
   id: string;
@@ -33,6 +34,40 @@ export function setSession(token: string, user: AuthUser): void {
 export function clearSession(): void {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+}
+
+export function saveReturnUrl(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const returnUrl =
+    `${window.location.pathname}${window.location.search}`;
+
+  if (
+    returnUrl &&
+    returnUrl !== '/login'
+  ) {
+    sessionStorage.setItem(
+      RETURN_URL_KEY,
+      returnUrl,
+    );
+  }
+}
+
+export function consumeReturnUrl(): string | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const returnUrl =
+    sessionStorage.getItem(RETURN_URL_KEY);
+
+  sessionStorage.removeItem(
+    RETURN_URL_KEY,
+  );
+
+  return returnUrl;
 }
 
 export function getStoredUser(): AuthUser | null {
@@ -74,11 +109,114 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
 
   const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
 
-  if (response.status === 401 && typeof window !== 'undefined') {
+  if (
+    response.status === 401 &&
+    typeof window !== 'undefined'
+  ) {
+    if (window.location.pathname !== '/login') {
+      saveReturnUrl();
+    }
+
     clearSession();
+
     if (window.location.pathname !== '/login') {
       window.location.href = '/login';
     }
   }
   return response;
+}
+
+export class ApiRequestError extends Error {
+  status: number;
+  path: string;
+  detail?: string;
+
+  constructor(
+    message: string,
+    status: number,
+    path: string,
+    detail?: string,
+  ) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+    this.path = path;
+    this.detail = detail;
+  }
+}
+
+async function extractApiError(response: Response): Promise<string | undefined> {
+  try {
+    const contentType = response.headers.get('content-type') ?? '';
+
+    if (contentType.includes('application/json')) {
+      const payload = await response.clone().json();
+
+      if (typeof payload?.detail === 'string') {
+        return payload.detail;
+      }
+
+      if (typeof payload?.message === 'string') {
+        return payload.message;
+      }
+
+      return JSON.stringify(payload);
+    }
+
+    const text = await response.clone().text();
+    return text || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function assertApiResponse(
+  response: Response,
+  path: string,
+): Promise<void> {
+  if (response.ok) {
+    return;
+  }
+
+  const detail = await extractApiError(response);
+
+  throw new ApiRequestError(
+    detail
+      ? `API request failed: ${detail}`
+      : `API request failed with status ${response.status}`,
+    response.status,
+    path,
+    detail,
+  );
+}
+
+export function getApiErrorMessage(
+  error: unknown,
+  fallback = 'Something went wrong while communicating with the server.',
+): string {
+  if (error instanceof ApiRequestError) {
+    if (error.status >= 500) {
+      return 'AlertIQ backend is currently unavailable. Existing alert data may be temporarily inaccessible.';
+    }
+
+    if (error.status === 403) {
+      return 'You do not have permission to perform this action.';
+    }
+
+    if (error.status === 404) {
+      return 'The requested resource could not be found.';
+    }
+
+    return error.detail || error.message;
+  }
+
+  if (error instanceof TypeError) {
+    return 'Unable to connect to the AlertIQ backend. Check the server or network connection.';
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
 }

@@ -155,63 +155,140 @@ class AlertService(CRUDBase[Alert]):
                 "An alert with this external_id already exists for this source."
             )
 
-    def upsert(self, session: Session, *, obj_in: AlertCreate) -> tuple[Alert, bool]:
+    def _apply_provider_update(
+        self,
+        session: Session,
+        *,
+        existing: Alert,
+        obj_in: AlertCreate,
+    ) -> Alert:
         """
-        Insert a new alert or update mutable fields on an existing one.
+        Apply the latest provider state to an existing alert.
 
-        Returns ``(alert, created)`` where ``created=True`` means a new row was
-        inserted and ``False`` means an existing alert was updated.
-
-        Update rules for existing alerts:
-        - ``severity``, ``extra_fields``, ``impact`` are always overwritten with
-          the latest values from the provider.
-        - ``status``: an incoming ``SOLVED`` (the provider resolved the alert)
-          always wins. An incoming ``OPEN`` re-fire reopens alerts the provider
-          previously resolved (``SOLVED``) and alerts the correlation engine
-          dismissed into a group (marked ``_correlated_into``) — the engine then
-          re-folds those into an open group or starts a fresh one. User-set
-          workflow states (``IN_PROGRESS``, or ``DISMISSED`` set by a person)
-          are preserved on re-fires.
-        - ``created_at`` is never touched; ``updated_at`` is managed by the DB.
+        Provider-controlled fields are refreshed on every delivery while
+        operator-controlled workflow states are preserved unless the provider
+        explicitly resolves the alert or re-fires a previously resolved /
+        correlation-dismissed alert.
         """
-        existing = session.exec(
+        was_correlated = bool(
+            (existing.extra_fields or {}).get("_correlated_into")
+        )
+
+        existing.severity = obj_in.severity
+        existing.extra_fields = obj_in.extra_fields
+        existing.impact = obj_in.impact
+
+        if obj_in.status == AlertStatus.SOLVED:
+            existing.status = AlertStatus.SOLVED
+
+        elif obj_in.status == AlertStatus.OPEN and (
+            existing.status == AlertStatus.SOLVED
+            or (
+                existing.status == AlertStatus.DISMISSED
+                and was_correlated
+            )
+        ):
+            existing.status = AlertStatus.OPEN
+
+        session.add(existing)
+        session.commit()
+        session.refresh(existing)
+
+        if existing.status == AlertStatus.SOLVED:
+            safe_index_alert(session, existing)
+
+        event_bus.publish("alert.updated", existing.id)
+
+        return existing
+
+
+    def _find_provider_alert(
+        self,
+        session: Session,
+        *,
+        source_id: uuid.UUID,
+        external_id: str,
+    ) -> Alert | None:
+        """
+        Look up an alert by the provider identity protected by the database
+        unique constraint.
+        """
+        return session.exec(
             select(Alert).where(
-                Alert.source_id == obj_in.source_id,
-                Alert.external_id == obj_in.external_id,
+                Alert.source_id == source_id,
+                Alert.external_id == external_id,
             )
         ).first()
+    
+    def upsert(
+        self,
+        session: Session,
+        *,
+        obj_in: AlertCreate,
+    ) -> tuple[Alert, bool]:
+        """
+        Insert a new alert or update an existing provider alert.
+
+        The database unique constraint remains the final authority for
+        deduplication. If two webhook deliveries race to insert the same alert,
+        the losing transaction is rolled back and the row created by the winning
+        transaction is loaded and updated instead of returning a raw 500.
+
+        Returns:
+            tuple[Alert, bool]:
+                The persisted alert and whether this call created it.
+        """
+        existing = self._find_provider_alert(
+            session,
+            source_id=obj_in.source_id,
+            external_id=obj_in.external_id,
+        )
 
         if existing is not None:
-            # Read before extra_fields is overwritten with the provider payload.
-            was_correlated = bool(
-                (existing.extra_fields or {}).get("_correlated_into")
+            updated = self._apply_provider_update(
+                session,
+                existing=existing,
+                obj_in=obj_in,
             )
-            existing.severity = obj_in.severity
-            existing.extra_fields = obj_in.extra_fields
-            existing.impact = obj_in.impact
-            if obj_in.status == AlertStatus.SOLVED:
-                existing.status = obj_in.status
-            elif obj_in.status == AlertStatus.OPEN and (
-                existing.status == AlertStatus.SOLVED
-                or (existing.status == AlertStatus.DISMISSED and was_correlated)
-            ):
-                # A still-firing alert must not stay hidden behind a stale
-                # resolution or a correlation group that may have closed.
-                existing.status = AlertStatus.OPEN
-            session.commit()
-            session.refresh(existing)
-            if existing.status == AlertStatus.SOLVED:
-                safe_index_alert(session, existing)
-            event_bus.publish("alert.updated", existing.id)
-            return existing, False
+            return updated, False
 
         alert = Alert.model_validate(obj_in.model_dump())
         session.add(alert)
-        session.commit()
-        session.refresh(alert)
+
+        try:
+            session.commit()
+            session.refresh(alert)
+
+        except IntegrityError:
+            # Another request may have inserted the same provider alert between
+            # our initial SELECT and INSERT.
+            session.rollback()
+
+            existing = self._find_provider_alert(
+                session,
+                source_id=obj_in.source_id,
+                external_id=obj_in.external_id,
+            )
+
+            if existing is None:
+                # The integrity failure was caused by something other than the
+                # expected source_id/external_id race. Preserve the real failure
+                # instead of pretending deduplication succeeded.
+                raise
+
+            updated = self._apply_provider_update(
+                session,
+                existing=existing,
+                obj_in=obj_in,
+            )
+
+            return updated, False
+
         if alert.status == AlertStatus.SOLVED:
             safe_index_alert(session, alert)
+
         event_bus.publish("alert.created", alert.id)
+
         return alert, True
 
     def update(
@@ -280,18 +357,26 @@ class AlertService(CRUDBase[Alert]):
 
         agg_message = title or f"Aggregated: {len(children)} alerts — {children[0].message[:80]}"
 
+        first = children[0]
+        first_extra = first.extra_fields or {}
+
         aggregated = Alert(
-            source_id=children[0].source_id,
+            source_id=first.source_id,
             external_id=str(uuid.uuid4()),
             message=agg_message,
-            application=children[0].application,
-            region=children[0].region,
+            application=first.application,
+            component=first.component,
+            region=first.region,
+            node_name=first.node_name,
+            impact=first.impact,
+            operator=first.operator,
             severity=highest,
             status=AlertStatus.OPEN,
             extra_fields={
                 "_is_aggregated": True,
                 "_child_ids": [str(a.id) for a in children],
                 "_child_count": len(children),
+                "source": first_extra.get("source"),
             },
         )
         session.add(aggregated)
