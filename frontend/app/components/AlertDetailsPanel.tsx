@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Alert, AlertNote } from './../types/alert';
 import { CopilotSuggestion } from '../types/copilot';
-import { fetchAlert, fetchAlertNotes, addAlertNote, updateAlertNote, deleteAlertNote, updateAlertAssignee, fetchCopilotSuggestion, fetchAlertChildren} from '../services/alertsApi';
+import { fetchAlert, fetchAlertNotes, addAlertNote, updateAlertNote, deleteAlertNote, updateAlertAssignee, fetchCopilotSuggestion, fetchAlertChildren, fetchSimilarAlerts, CopilotRequestError, SimilarAlertHit,} from '../services/alertsApi';
 import { getStoredUser } from '../services/apiClient';
 import { fetchAllUsers } from '../services/usersApi';
 import AlertRawDataModal from './AlertRawDataModal';
@@ -314,10 +314,30 @@ const [similarError, setSimilarError] =
   };
 
   const handleDelete = async (id: string) => {
+    const confirmed = window.confirm(
+      'Are you sure you want to delete this note? This action cannot be undone.'
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
     setNoteError(null);
-    const ok = await deleteAlertNote(alert.id, id);
-    if (ok) setNotes((prev) => prev.filter((n) => n.id !== id));
-    else setNoteError('Could not delete the note — try again.');
+
+    const ok = await deleteAlertNote(
+      alert.id,
+      id,
+    );
+
+    if (ok) {
+      setNotes((prev) =>
+        prev.filter((note) => note.id !== id)
+      );
+    } else {
+      setNoteError(
+        'Could not delete the note — try again.'
+      );
+    }
   };
 
   // Chat order: oldest first, newest at the bottom.
