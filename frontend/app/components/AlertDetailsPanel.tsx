@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Alert, AlertNote } from './../types/alert';
 import { CopilotSuggestion } from '../types/copilot';
-import { fetchAlert, fetchAlertNotes, addAlertNote, updateAlertNote, deleteAlertNote, updateAlertAssignee, fetchCopilotSuggestion, fetchAlertChildren, fetchSimilarAlerts, CopilotRequestError, SimilarAlertHit,} from '../services/alertsApi';
+import { fetchAlert, fetchAlertNotes, addAlertNote, updateAlertNote, deleteAlertNote, updateAlertAssignee, fetchCopilotSuggestion, fetchAlertChildren,fetchSimilarAlerts,SimilarAlertHit, CopilotRequestError} from '../services/alertsApi';
 import { getStoredUser } from '../services/apiClient';
 import { fetchAllUsers } from '../services/usersApi';
 import AlertRawDataModal from './AlertRawDataModal';

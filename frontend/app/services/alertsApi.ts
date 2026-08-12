@@ -247,16 +247,111 @@ export async function deleteAlertNote(alertId: string, noteId: string): Promise<
   }
 }
 
+export class CopilotRequestError extends Error {
+  status: number;
+  retryable: boolean;
+
+  constructor(
+    message: string,
+    status: number,
+    retryable: boolean = false,
+  ) {
+    super(message);
+    this.name = 'CopilotRequestError';
+    this.status = status;
+    this.retryable = retryable;
+  }
+}
+
+async function getCopilotErrorMessage(
+  response: Response,
+): Promise<string> {
+  try {
+    const data = await response.clone().json();
+
+    if (typeof data?.detail === 'string') {
+      return data.detail;
+    }
+
+    if (typeof data?.message === 'string') {
+      return data.message;
+    }
+  } catch {
+    // Ignore malformed / non-JSON error bodies.
+  }
+
+  if (response.status === 404) {
+    return 'This alert could not be found.';
+  }
+
+  if (response.status === 429) {
+    return 'The AI provider is temporarily rate limited.';
+  }
+
+  if (response.status >= 500) {
+    return 'The Resolution Copilot is temporarily unavailable.';
+  }
+
+  return `Copilot request failed with status ${response.status}.`;
+}
+
 export async function fetchCopilotSuggestion(
   alertId: string,
-  force: boolean = false
-): Promise<CopilotSuggestion | null> {
-  try {
-    const query = force ? '?force=true' : '';
-    const response = await apiFetch(`/alerts/${alertId}/copilot${query}`);
-    return await response.json() as CopilotSuggestion;
-  } catch (error) {
-    console.error('Error fetching copilot suggestion:', error);
-    return null;
+  force: boolean = false,
+  signal?: AbortSignal,
+): Promise<CopilotSuggestion> {
+  const query = force ? '?force=true' : '';
+  const path = `/alerts/${alertId}/copilot${query}`;
+
+  const response = await apiFetch(path, {
+    signal,
+  });
+
+  if (!response.ok) {
+    const message = await getCopilotErrorMessage(response);
+
+    throw new CopilotRequestError(
+      message,
+      response.status,
+      response.status === 429 || response.status >= 500,
+    );
   }
+
+  const data = await response.json();
+
+  return data as CopilotSuggestion;
+}
+
+export interface SimilarAlertHit {
+  source_type: string;
+  source_id: string;
+  chunk_index: number;
+  similarity: number;
+  content: string;
+}
+
+export interface SimilarAlertsResponse {
+  alert_id: string;
+  query_text: string;
+  precedent_found: boolean;
+  hits: SimilarAlertHit[];
+}
+
+export async function fetchSimilarAlerts(
+  alertId: string,
+  signal?: AbortSignal,
+): Promise<SimilarAlertsResponse> {
+  const path = `/alerts/${alertId}/similar`;
+
+  const response = await apiFetch(path, {
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to load similar alerts: ${response.status}`,
+    );
+  }
+
+  return await response.json() as SimilarAlertsResponse;
 }

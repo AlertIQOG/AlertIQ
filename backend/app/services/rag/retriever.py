@@ -67,6 +67,9 @@ def search(
     distance = RagChunk.embedding.cosine_distance(query_vec)
     statement = (
         select(RagChunk, distance.label("distance"))
+        .where(
+            RagChunk.embedding_model == embedding_service.model
+        )
         .order_by(distance)
         .limit(top_k + 1)
     )

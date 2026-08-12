@@ -215,27 +215,140 @@ def index_incident(session: Session, incident: Incident) -> tuple[RagChunk, bool
         content=content,
     )
 
+def delete_alert_chunks(
+    session: Session,
+    alert_id: uuid.UUID,
+) -> int:
+    """Delete all RAG chunks that belong to a deleted alert."""
+    chunks = list(
+        session.exec(
+            select(RagChunk).where(
+                RagChunk.source_type == "alert",
+                RagChunk.source_id == alert_id,
+            )
+        ).all()
+    )
+
+    if not chunks:
+        return 0
+
+    for chunk in chunks:
+        session.delete(chunk)
+
+    session.commit()
+
+    logger.info(
+        "Deleted %d RAG chunk(s) for alert %s",
+        len(chunks),
+        alert_id,
+    )
+
+    return len(chunks)
 
 # ── Best-effort live triggers ─────────────────────────────────────────
 # Wrapped so a missing key or a Voyage outage logs and is swallowed rather
 # than failing the surrounding ingestion / status-update request.
 
 
-def safe_index_alert(session: Session, alert: Alert) -> None:
+def safe_index_alert(
+    session: Session,
+    alert: Alert,
+    *,
+    max_attempts: int = 3,
+) -> None:
+    """Best-effort indexing with limited retries.
+
+    Indexing must never break alert ingestion, but transient embedding-provider
+    failures should get another chance before the alert is abandoned.
+    """
     if not embedding_service.is_configured():
         return
-    try:
-        index_alert(session, alert)
-    except Exception as exc:  # noqa: BLE001 — best-effort: never break the caller
-        session.rollback()
-        logger.warning("RAG indexing failed for alert %s: %s", alert.id, exc)
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            index_alert(session, alert)
+
+            if attempt > 1:
+                logger.info(
+                    "RAG indexing recovered for alert %s on attempt %d",
+                    alert.id,
+                    attempt,
+                )
+
+            return
+
+        except Exception as exc:  # noqa: BLE001
+            session.rollback()
+
+            if attempt >= max_attempts:
+                logger.error(
+                    "RAG indexing permanently failed for alert %s after %d attempts: %s",
+                    alert.id,
+                    max_attempts,
+                    exc,
+                )
+                return
+
+            delay_seconds = attempt
+
+            logger.warning(
+                "RAG indexing failed for alert %s on attempt %d/%d: %s. "
+                "Retrying in %ds.",
+                alert.id,
+                attempt,
+                max_attempts,
+                exc,
+                delay_seconds,
+            )
+
+            time.sleep(delay_seconds)
 
 
-def safe_index_incident(session: Session, incident: Incident) -> None:
+def safe_index_incident(
+    session: Session,
+    incident: Incident,
+    *,
+    max_attempts: int = 3,
+) -> None:
+    """Best-effort incident indexing with limited retries."""
     if not embedding_service.is_configured():
         return
-    try:
-        index_incident(session, incident)
-    except Exception as exc:  # noqa: BLE001 — best-effort: never break the caller
-        session.rollback()
-        logger.warning("RAG indexing failed for incident %s: %s", incident.id, exc)
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            index_incident(session, incident)
+
+            if attempt > 1:
+                logger.info(
+                    "RAG indexing recovered for incident %s on attempt %d",
+                    incident.id,
+                    attempt,
+                )
+
+            return
+
+        except Exception as exc:  # noqa: BLE001
+            session.rollback()
+
+            if attempt >= max_attempts:
+                logger.error(
+                    "RAG indexing permanently failed for incident %s after %d attempts: %s",
+                    incident.id,
+                    max_attempts,
+                    exc,
+                )
+                return
+
+            delay_seconds = attempt
+
+            logger.warning(
+                "RAG indexing failed for incident %s on attempt %d/%d: %s. "
+                "Retrying in %ds.",
+                incident.id,
+                attempt,
+                max_attempts,
+                exc,
+                delay_seconds,
+            )
+
+            time.sleep(delay_seconds)
