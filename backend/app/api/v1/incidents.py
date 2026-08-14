@@ -53,10 +53,7 @@ def create_incident(*, session: DbSession, body: IncidentCreate) -> IncidentRead
             ),
             {"lock_key": lock_key},
         )
-    already_open = incident_service.open_incident_by_alert(
-        session,
-        alert_ids=linked,
-    )
+    already_open = incident_service.open_incident_by_alert(session)
     clashing = [aid for aid in linked if aid in already_open]
     if clashing:
         raise ConflictError(
