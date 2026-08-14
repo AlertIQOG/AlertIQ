@@ -61,12 +61,8 @@ def _to_read(
     """
     if not alerts:
         return []
-    alert_ids = [alert.id for alert in alerts]
 
-    open_by_alert = incident_service.open_incident_by_alert(
-        session,
-        alert_ids=alert_ids,
-    )
+    open_by_alert = incident_service.open_incident_by_alert(session)
     
     reads: list[AlertRead] = []
     for alert in alerts:
