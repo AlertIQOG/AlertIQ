@@ -1,6 +1,9 @@
 """
 Seed a burst of alerts that the correlation engine should fold into aggregates.
 
+Uses only the Python 3 standard library (urllib + json) — no venv or
+``pip install`` required; any plain ``python3`` can run it.
+
 The alerts enter through the real webhook ingest route
 (``POST /ingest/grafana/{source_id}``, authenticated with the source's
 ``X-Webhook-Token``), so they pass through normalization, dedup/upsert and the
@@ -51,6 +54,7 @@ Requires a running backend and valid credentials.
 
 Run from the backend/ directory:
 
+    python scripts/send_correlated_alerts.py
     python -m scripts.send_correlated_alerts
     python -m scripts.send_correlated_alerts --batch 2
     python -m scripts.send_correlated_alerts --user admin --password secret
@@ -58,11 +62,85 @@ Run from the backend/ directory:
 """
 
 import argparse
+import json
 import os
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 from typing import Any, NamedTuple
 
-import httpx
+
+class ApiError(Exception):
+    """An API call returned a non-2xx status."""
+
+    def __init__(self, method: str, url: str, status: int, body: str) -> None:
+        super().__init__(f"{method} {url} failed with HTTP {status}")
+        self.method = method
+        self.url = url
+        self.status = status
+        self.body = body
+
+
+class ApiClient:
+    """Minimal stdlib JSON client: bearer-token header + error surfacing."""
+
+    def __init__(self, base_url: str, timeout: float = 30) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self.headers: dict[str, str] = {}
+
+    def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: dict[str, Any] | None = None,
+        form: dict[str, str] | None = None,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> Any:
+        url = self.base_url + path
+        if params:
+            url += "?" + urllib.parse.urlencode(params)
+
+        data: bytes | None = None
+        request_headers = dict(self.headers)
+        if headers:
+            request_headers.update(headers)
+        if form is not None:
+            data = urllib.parse.urlencode(form).encode()
+            request_headers["Content-Type"] = "application/x-www-form-urlencoded"
+        elif json_body is not None:
+            data = json.dumps(json_body).encode()
+            request_headers["Content-Type"] = "application/json"
+
+        req = urllib.request.Request(
+            url, data=data, headers=request_headers, method=method
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                body = response.read().decode()
+        except urllib.error.HTTPError as exc:
+            raise ApiError(
+                method, url, exc.code, exc.read().decode(errors="replace")
+            ) from None
+        return json.loads(body) if body else None
+
+    def get(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
+        return self.request("GET", path, params=params)
+
+    def post(
+        self,
+        path: str,
+        *,
+        json_body: dict[str, Any] | None = None,
+        form: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> Any:
+        return self.request(
+            "POST", path, json_body=json_body, form=form, headers=headers
+        )
 
 
 class AlertSpec(NamedTuple):
@@ -185,50 +263,49 @@ def fingerprint(spec: AlertSpec, batch: str) -> str:
     return f"{FINGERPRINT_PREFIX}-{batch}-{spec.node}"
 
 
-def login(client: httpx.Client, username: str, password: str) -> str:
+def login(client: ApiClient, username: str, password: str) -> str:
     """Return a bearer token, exiting with the server response on failure."""
-    response = client.post(
-        "/auth/login", data={"username": username, "password": password}
-    )
-    token = response.json().get("access_token") if response.is_success else None
+    try:
+        response = client.post(
+            "/auth/login", form={"username": username, "password": password}
+        )
+        token = response.get("access_token")
+    except ApiError as exc:
+        print(f"error: login failed. Response:\n{exc.body}", file=sys.stderr)
+        sys.exit(1)
     if not token:
-        print(f"error: login failed. Response:\n{response.text}", file=sys.stderr)
+        print(f"error: login failed. Response:\n{response}", file=sys.stderr)
         sys.exit(1)
     return token
 
 
-def get_or_create_source(client: httpx.Client) -> tuple[str, str]:
+def get_or_create_source(client: ApiClient) -> tuple[str, str]:
     """
     Return ``(source_id, webhook_secret)`` for a source that can ingest.
 
     Prefers an existing source that has a webhook secret; otherwise creates a
     demo source (creation auto-generates a secret).
     """
-    sources = client.get("/sources/").raise_for_status().json()
+    sources = client.get("/sources/")
     for source in sources:
         if source.get("webhook_secret"):
             return source["id"], source["webhook_secret"]
 
     print("    no source with a webhook secret found - creating one")
-    created = (
-        client.post(
-            "/sources/", json={"name": "demo-seed", "provider_type": "grafana"}
-        )
-        .raise_for_status()
-        .json()
+    created = client.post(
+        "/sources/", json_body={"name": "demo-seed", "provider_type": "grafana"}
     )
     return created["id"], created["webhook_secret"]
 
 
-def warn_if_no_matching_rule(client: httpx.Client) -> None:
+def warn_if_no_matching_rule(client: ApiClient) -> None:
     """
     Print the enabled rules so a missing/mistyped rule is obvious before we send.
 
     The check mirrors the engine: an enabled rule whose scope is empty or
     ``source=Grafana``, and whose conditions only reference fields we send.
     """
-    response = client.get("/correlation-rules/", params={"enabled": True})
-    rules = response.raise_for_status().json()
+    rules = client.get("/correlation-rules/", params={"enabled": "true"})
     if not rules:
         print("    WARNING: no enabled correlation rules - nothing will aggregate.")
         return
@@ -275,13 +352,9 @@ def grafana_alert(spec: AlertSpec, batch: str) -> dict[str, Any]:
     }
 
 
-def sent_alert_ids(client: httpx.Client, source_id: str, batch: str) -> dict[str, str]:
+def sent_alert_ids(client: ApiClient, source_id: str, batch: str) -> dict[str, str]:
     """Map ``alert_id -> node`` for the alerts this run just ingested."""
-    alerts = (
-        client.get("/alerts/", params={"source_id": source_id, "limit": 500})
-        .raise_for_status()
-        .json()
-    )
+    alerts = client.get("/alerts/", params={"source_id": source_id, "limit": 500})
     wanted = {fingerprint(spec, batch): spec.node for spec in ALERT_SPECS}
     return {
         alert["id"]: wanted[alert["external_id"]]
@@ -290,7 +363,7 @@ def sent_alert_ids(client: httpx.Client, source_id: str, batch: str) -> dict[str
     }
 
 
-def report_aggregates(client: httpx.Client, ours: dict[str, str]) -> None:
+def report_aggregates(client: ApiClient, ours: dict[str, str]) -> None:
     """
     Report every aggregate that actually contains one of the alerts we sent.
 
@@ -299,11 +372,7 @@ def report_aggregates(client: httpx.Client, ours: dict[str, str]) -> None:
     returns on the first active rule that aggregates, and ``get_active`` has no
     ordering — so an older, broader rule can legitimately claim these alerts.
     """
-    aggregates = (
-        client.get("/aggregated-alerts/", params={"limit": 500})
-        .raise_for_status()
-        .json()
-    )
+    aggregates = client.get("/aggregated-alerts/", params={"limit": 500})
 
     claimed: set[str] = set()
     found = False
@@ -370,62 +439,58 @@ def main() -> int:
 
     try:
         return seed(args)
-    except httpx.HTTPStatusError as exc:
+    except ApiError as exc:
         print(
-            f"error: {exc.request.method} {exc.request.url} failed with "
-            f"HTTP {exc.response.status_code}:\n{exc.response.text}",
+            f"error: {exc.method} {exc.url} failed with "
+            f"HTTP {exc.status}:\n{exc.body}",
             file=sys.stderr,
         )
-    except httpx.HTTPError as exc:
-        print(f"error: request to {args.api} failed: {exc}", file=sys.stderr)
+    except urllib.error.URLError as exc:
+        print(f"error: request to {args.api} failed: {exc.reason}", file=sys.stderr)
     return 1
 
 
 def seed(args: argparse.Namespace) -> int:
-    with httpx.Client(base_url=args.api, timeout=30) as client:
-        print(f"==> Logging in as '{args.user}' at {args.api}")
-        token = login(client, args.user, args.password)
-        client.headers["Authorization"] = f"Bearer {token}"
+    client = ApiClient(args.api, timeout=30)
+    print(f"==> Logging in as '{args.user}' at {args.api}")
+    token = login(client, args.user, args.password)
+    client.headers["Authorization"] = f"Bearer {token}"
 
-        print("==> Enabled correlation rules")
-        warn_if_no_matching_rule(client)
+    print("==> Enabled correlation rules")
+    warn_if_no_matching_rule(client)
 
-        print("==> Finding a source to attach the alerts to")
-        source_id, webhook_secret = get_or_create_source(client)
-        print(f"    using source_id={source_id}")
+    print("==> Finding a source to attach the alerts to")
+    source_id, webhook_secret = get_or_create_source(client)
+    print(f"    using source_id={source_id}")
 
-        print(f"==> Ingesting {len(ALERT_SPECS)} alerts (batch={args.batch})")
-        for spec in ALERT_SPECS:
-            print(f"    {spec.message}")
-            print(
-                f"      region={spec.region:10} app={spec.application:9} "
-                f"component={spec.component:9} cpu={spec.cpu_usage:>3}  "
-                f"-> {spec.expectation}"
-            )
-
-        payload = {
-            "status": "firing",
-            "alerts": [grafana_alert(spec, args.batch) for spec in ALERT_SPECS],
-        }
-        counts = (
-            client.post(
-                f"/ingest/grafana/{source_id}",
-                json=payload,
-                headers={"X-Webhook-Token": webhook_secret},
-            )
-            .raise_for_status()
-            .json()
+    print(f"==> Ingesting {len(ALERT_SPECS)} alerts (batch={args.batch})")
+    for spec in ALERT_SPECS:
+        print(f"    {spec.message}")
+        print(
+            f"      region={spec.region:10} app={spec.application:9} "
+            f"component={spec.component:9} cpu={spec.cpu_usage:>3}  "
+            f"-> {spec.expectation}"
         )
-        print(f"    ingest accepted: {counts}")
-        if counts["aggregated"] != EXPECTED_AGGREGATED:
-            print(
-                f"    NOTE: {counts['aggregated']}/{EXPECTED_AGGREGATED} alerts were "
-                "aggregated (re-runs of the same batch report 0 newly counted "
-                "members only if the alerts were already folded in)."
-            )
 
-        print("==> Aggregates containing these alerts")
-        report_aggregates(client, sent_alert_ids(client, source_id, args.batch))
+    payload = {
+        "status": "firing",
+        "alerts": [grafana_alert(spec, args.batch) for spec in ALERT_SPECS],
+    }
+    counts = client.post(
+        f"/ingest/grafana/{source_id}",
+        json_body=payload,
+        headers={"X-Webhook-Token": webhook_secret},
+    )
+    print(f"    ingest accepted: {counts}")
+    if counts["aggregated"] != EXPECTED_AGGREGATED:
+        print(
+            f"    NOTE: {counts['aggregated']}/{EXPECTED_AGGREGATED} alerts were "
+            "aggregated (re-runs of the same batch report 0 newly counted "
+            "members only if the alerts were already folded in)."
+        )
+
+    print("==> Aggregates containing these alerts")
+    report_aggregates(client, sent_alert_ids(client, source_id, args.batch))
 
     print()
     print("Done. Open the alerts feed: each group is one row badged 'AGG - n'")
