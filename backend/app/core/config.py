@@ -19,6 +19,8 @@ class Settings(BaseSettings):
 
     # Notifications — Slack (Incoming Webhook)
     SLACK_WEBHOOK_URL: str = ""
+    # Bot User OAuth Token (xoxb-..., scope chat:write) for custom per-rule channels.
+    SLACK_BOT_TOKEN: str = ""
 
     # Notifications — Email (SMTP). For Gmail: host=smtp.gmail.com, port=587, TLS on,
     # password = an App Password (requires 2FA on the account).

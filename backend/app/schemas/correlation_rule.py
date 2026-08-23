@@ -18,7 +18,7 @@ AllowedOperator = Literal[
 ]
 
 # Actions a rule can run when it matches. Exposed as a multiselect in the UI.
-CorrelationAction = Literal["aggregate", "email"]
+CorrelationAction = Literal["aggregate", "email", "slack"]
 
 
 def _dedupe_actions(actions: list[str]) -> list[str]:
@@ -49,6 +49,24 @@ def _clean_recipients(recipients: list[str]) -> list[str]:
     return cleaned
 
 
+# Slack channel name (optionally "#"-prefixed) or a channel ID like C0123456789.
+_SLACK_CHANNEL_RE = re.compile(r"^#?[a-zA-Z0-9_-]{1,80}$")
+
+
+def _clean_slack_channels(channels: list[str]) -> list[str]:
+    """Trim, drop blanks, de-duplicate, and validate each channel's format."""
+    cleaned: list[str] = []
+    for raw in channels:
+        channel = raw.strip()
+        if not channel:
+            continue
+        if not _SLACK_CHANNEL_RE.match(channel):
+            raise ValueError(f"Invalid Slack channel: {raw!r}")
+        if channel not in cleaned:
+            cleaned.append(channel)
+    return cleaned
+
+
 class CorrelationCondition(BaseModel):
     field: str
     operator: AllowedOperator
@@ -65,6 +83,7 @@ class CorrelationRuleBase(BaseModel):
     group_by: list[str] = Field(min_length=1)
     actions: list[CorrelationAction] = Field(default_factory=lambda: ["aggregate"], min_length=1)
     email_recipients: list[str] = Field(default_factory=list)
+    slack_channels: list[str] = Field(default_factory=list)
 
     @field_validator("actions")
     @classmethod
@@ -75,6 +94,11 @@ class CorrelationRuleBase(BaseModel):
     @classmethod
     def clean_recipients(cls, recipients: list[str]) -> list[str]:
         return _clean_recipients(recipients)
+
+    @field_validator("slack_channels")
+    @classmethod
+    def clean_slack_channels(cls, channels: list[str]) -> list[str]:
+        return _clean_slack_channels(channels)
 
 
 class CorrelationRuleCreate(CorrelationRuleBase):
@@ -97,6 +121,11 @@ class CorrelationRuleCreate(CorrelationRuleBase):
                 "The email action requires at least one recipient in email_recipients"
             )
 
+        if "slack" in self.actions and not self.slack_channels:
+            raise ValueError(
+                "The slack action requires at least one channel in slack_channels"
+            )
+
         return self
 
 
@@ -115,6 +144,7 @@ class CorrelationRuleUpdate(BaseModel):
     group_by: list[str] | None = Field(default=None, min_length=1)
     actions: list[CorrelationAction] | None = Field(default=None, min_length=1)
     email_recipients: list[str] | None = None
+    slack_channels: list[str] | None = None
 
     @field_validator("name")
     @classmethod
@@ -140,6 +170,11 @@ class CorrelationRuleUpdate(BaseModel):
     def clean_recipients(cls, recipients: list[str] | None) -> list[str] | None:
         return _clean_recipients(recipients) if recipients is not None else None
 
+    @field_validator("slack_channels")
+    @classmethod
+    def clean_slack_channels(cls, channels: list[str] | None) -> list[str] | None:
+        return _clean_slack_channels(channels) if channels is not None else None
+
 
 class CorrelationRuleRead(BaseModel):
     model_config = {"from_attributes": True}
@@ -154,6 +189,7 @@ class CorrelationRuleRead(BaseModel):
     group_by: list[str]
     actions: list[str] = Field(default_factory=lambda: ["aggregate"])
     email_recipients: list[str] = Field(default_factory=list)
+    slack_channels: list[str] = Field(default_factory=list)
     last_triggered_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None

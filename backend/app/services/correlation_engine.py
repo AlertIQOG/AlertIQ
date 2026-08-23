@@ -471,6 +471,52 @@ class CorrelationEngine:
             )
             return False
 
+    def _dispatch_slack(
+        self,
+        rule: CorrelationRule,
+        alert: Alert,
+    ) -> bool:
+        """Dispatch the slack action, one call per configured channel (falls
+        back to the fixed webhook channel if none configured). Notification
+        failures never break correlation itself."""
+        channels = getattr(rule, "slack_channels", None) or [None]
+        all_ok = True
+
+        for channel in channels:
+            try:
+                results = self.notifier(
+                    rule,
+                    [alert],
+                    channels=["slack"],
+                    to=channel,
+                )
+
+                if results is None or any(not getattr(r, "ok", False) for r in results):
+                    all_ok = False
+                    logger.error(
+                        "Slack action failed — rule=%s alert=%s channel=%s",
+                        rule.name,
+                        alert.id,
+                        channel or "default",
+                    )
+                else:
+                    logger.info(
+                        "Slack action succeeded — rule=%s alert=%s channel=%s",
+                        rule.name,
+                        alert.id,
+                        channel or "default",
+                    )
+            except Exception:  # noqa: BLE001
+                all_ok = False
+                logger.exception(
+                    "Slack action crashed — rule=%s alert=%s channel=%s",
+                    rule.name,
+                    alert.id,
+                    channel or "default",
+                )
+
+        return all_ok
+
     def process_alert(
         self,
         session: "Session",
@@ -484,10 +530,10 @@ class CorrelationEngine:
         Returns the :class:`AggregatedAlert` the alert landed in, or ``None``
         when no rule matched (the alert remains standalone).
 
-        Per-rule ``actions`` decide what happens on a match: ``"email"`` sends an
-        email notification, ``"aggregate"`` folds the alert into an aggregate. A
-        rule may have either or both; an email-only rule fires the email and
-        leaves the alert available for a later rule to aggregate.
+        Per-rule ``actions`` decide what happens on a match: ``"email"``/``"slack"``
+        send a notification, ``"aggregate"`` folds the alert into an aggregate. A
+        rule may combine any of these; a notification-only rule fires its
+        notification(s) and leaves the alert available for a later rule to aggregate.
 
         Edge cases handled:
           - **resolved/dismissed alerts** are never correlated;
@@ -511,9 +557,11 @@ class CorrelationEngine:
 
             actions = rule.actions or ["aggregate"]
 
-            # Email is a side-effect fired on every match of an "email" rule.
+            # Email/Slack are side-effects fired on every match.
             if "email" in actions:
                 self._dispatch_email(rule, alert)
+            if "slack" in actions:
+                self._dispatch_slack(rule, alert)
 
             # An email-only rule does not consume the alert for aggregation;
             # let a later rule aggregate it.

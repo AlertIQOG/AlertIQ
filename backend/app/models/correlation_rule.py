@@ -29,8 +29,7 @@ class CorrelationRule(SQLModel, table=True):
     # Defines which alert fields are used to group alerts together
     group_by: list[str] = Field(default_factory=list, sa_column=Column(JSONB))
 
-    # Actions to run when the rule matches (multiselect): "aggregate" folds the
-    # alerts into an aggregated alert, "email" sends an email notification.
+    # Actions to run when the rule matches (multiselect): aggregate, email, slack.
     actions: list[str] = Field(
         default_factory=lambda: ["aggregate"], sa_column=Column(JSONB)
     )
@@ -38,6 +37,10 @@ class CorrelationRule(SQLModel, table=True):
     # Email addresses notified when the "email" action fires. Empty means fall
     # back to the global EMAIL_DEFAULT_TO.
     email_recipients: list[str] = Field(default_factory=list, sa_column=Column(JSONB))
+
+    # Slack channels posted to when the "slack" action fires. Empty falls back
+    # to the Incoming Webhook's fixed channel.
+    slack_channels: list[str] = Field(default_factory=list, sa_column=Column(JSONB))
 
     # When an alert last matched this rule. Stamped before the actions run, so
     # email-only rules are tracked too. NULL = the rule has never triggered.

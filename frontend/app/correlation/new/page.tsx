@@ -24,8 +24,10 @@ import {
   mapOperator,
   parseGroupBy,
   parseRecipients,
+  parseSlackChannels,
   timeWindowToMinutes,
   validateEmailRecipients,
+  validateSlackChannels,
 } from "../rulePayload";
 
 const DEFAULT_REGIONS = [ANY_REGION];
@@ -63,10 +65,13 @@ export default function CreateCorrelationRulePage() {
 
   // Recipients for the "email" action (comma-separated); required when it's on.
   const [emailRecipients, setEmailRecipients] = useState("");
+  // Channels for the "slack" action (comma-separated); required when it's on.
+  const [slackChannels, setSlackChannels] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const emailSelected = selectedActions.includes("email");
+  const slackSelected = selectedActions.includes("slack");
 
   const handleToggleAction = (id: CorrelationActionId) => {
     setSelectedActions((prev) => toggleAction(prev, id));
@@ -112,11 +117,17 @@ export default function CreateCorrelationRulePage() {
 
   const handleSaveRule = async () => {
     const recipients = parseRecipients(emailRecipients);
+    const channels = parseSlackChannels(slackChannels);
 
-    // Block save when the email action is on but recipients are missing/invalid.
+    // Block save when the email/slack action is on but its destination is missing/invalid.
     const recipientsCheck = validateEmailRecipients(selectedActions, recipients);
     if (!recipientsCheck.ok) {
       setFormError(recipientsCheck.error ?? "Invalid email recipients.");
+      return;
+    }
+    const channelsCheck = validateSlackChannels(selectedActions, channels);
+    if (!channelsCheck.ok) {
+      setFormError(channelsCheck.error ?? "Invalid Slack channels.");
       return;
     }
     setFormError(null);
@@ -139,8 +150,9 @@ export default function CreateCorrelationRulePage() {
       }),
       group_by: parseGroupBy(groupBy),
       actions: selectedActions,
-      // Only meaningful when the email action is selected; harmless otherwise.
+      // Only meaningful when the corresponding action is selected; harmless otherwise.
       email_recipients: emailSelected ? recipients : [],
+      slack_channels: slackSelected ? channels : [],
     };
 
     try {
@@ -459,6 +471,25 @@ export default function CreateCorrelationRulePage() {
                   />
                   <p className="text-xs text-slate-500">
                     Comma-separated addresses. Required while “Send Email” is selected.
+                  </p>
+                </div>
+              )}
+
+              {/* Channels — only relevant when the slack action is on */}
+              {slackSelected && (
+                <div className="flex flex-col gap-1.5 mt-1 animate-fadeIn">
+                  <label className="text-xs font-semibold text-slate-400">
+                    Slack channels
+                  </label>
+                  <input
+                    type="text"
+                    value={slackChannels}
+                    onChange={(e) => setSlackChannels(e.target.value)}
+                    placeholder="alerts-prod, #alerts-staging"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:border-indigo-500 outline-none transition-colors placeholder:text-slate-600"
+                  />
+                  <p className="text-xs text-slate-500">
+                    Comma-separated channel names or IDs. Required while “Send Slack” is selected.
                   </p>
                 </div>
               )}

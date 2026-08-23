@@ -347,6 +347,9 @@ export default function CorrelationRulesTable({
                     <RecipientsSection
                       recipients={expandedRule.email_recipients ?? []}
                     />
+                    <SlackChannelsSection
+                      channels={expandedRule.slack_channels ?? []}
+                    />
                   </div>
                 </div>
 
@@ -521,6 +524,41 @@ function RecipientsSection({
         </div>
       ) : (
         <EmptyState text="No email recipients configured" />
+      )}
+    </div>
+  );
+}
+
+function SlackChannelsSection({
+  channels,
+}: {
+  channels: string[];
+}) {
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+      <div className="mb-4 flex items-center gap-2">
+        <i className="fab fa-slack text-xs text-indigo-400" />
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          Slack channels
+        </h3>
+      </div>
+
+      {channels.length > 0 ? (
+        <div className="space-y-2">
+          {channels.map((channel) => (
+            <div
+              key={channel}
+              className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-3 py-2"
+            >
+              <i className="fas fa-hashtag text-xs text-slate-500" />
+              <span className="break-all text-sm text-slate-300">
+                {channel.replace(/^#/, "")}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <EmptyState text="No Slack channels configured" />
       )}
     </div>
   );

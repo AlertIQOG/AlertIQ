@@ -22,11 +22,14 @@ export interface CorrelationRule {
   // Array of dynamic conditions from the form
   conditions?: CorrelationCondition[];
 
-  // Actions to run when the rule matches (multiselect): "aggregate" and/or "email"
+  // Actions to run when the rule matches (multiselect): "aggregate", "email", and/or "slack"
   actions?: CorrelationActionId[];
 
   // Recipients notified when the "email" action fires
   email_recipients?: string[];
+
+  // Channels posted to when the "slack" action fires
+  slack_channels?: string[];
 
   // Helper fields for table display
   logicSummary: {

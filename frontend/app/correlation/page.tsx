@@ -20,6 +20,7 @@ type ApiCorrelationRule = {
   group_by?: string[];
   actions?: CorrelationActionId[];
   email_recipients?: string[];
+  slack_channels?: string[];
   last_triggered_at?: string | null;
 };
 
@@ -81,6 +82,7 @@ export default function CorrelationRulesPage() {
           // read "No actions configured" regardless of what it was saved with.
           actions: rule.actions ?? [],
           email_recipients: rule.email_recipients ?? [],
+          slack_channels: rule.slack_channels ?? [],
           lastTriggered: formatLastTriggered(rule.last_triggered_at),
         }));
 
