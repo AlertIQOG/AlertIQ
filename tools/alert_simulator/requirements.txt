@@ -1,1 +1,2 @@
-httpx>=0.27,<1
+# No dependencies — the generator uses only the Python 3 standard library
+# (see api_client.py) so it runs on a bare `python3`, no venv or pip needed.
