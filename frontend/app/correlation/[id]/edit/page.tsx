@@ -26,8 +26,10 @@ import {
   minutesToTimeWindow,
   parseGroupBy,
   parseRecipients,
+  parseSlackChannels,
   timeWindowToMinutes,
   validateEmailRecipients,
+  validateSlackChannels,
 } from "../../rulePayload";
 
 // The rule as the API returns it (CorrelationRuleRead).
@@ -46,6 +48,7 @@ type ApiCorrelationRule = {
   group_by?: string[];
   actions?: CorrelationActionId[];
   email_recipients?: string[];
+  slack_channels?: string[];
 };
 
 export default function EditCorrelationRulePage() {
@@ -82,8 +85,10 @@ export default function EditCorrelationRulePage() {
   const [selectedActions, setSelectedActions] =
     useState<CorrelationActionId[]>(DEFAULT_ACTIONS);
   const [emailRecipients, setEmailRecipients] = useState("");
+  const [slackChannels, setSlackChannels] = useState("");
 
   const emailSelected = selectedActions.includes("email");
+  const slackSelected = selectedActions.includes("slack");
 
   // Selectable regions come from the backend's filter endpoint, which returns
   // the distinct values actually present — no need to page through alerts.
@@ -116,6 +121,7 @@ export default function EditCorrelationRulePage() {
           rule.actions?.length ? rule.actions : DEFAULT_ACTIONS
         );
         setEmailRecipients((rule.email_recipients || []).join(", "));
+        setSlackChannels((rule.slack_channels || []).join(", "));
 
         setConditions(
           rule.conditions?.length
@@ -180,10 +186,16 @@ export default function EditCorrelationRulePage() {
 
   const handleSaveRule = async () => {
     const recipients = parseRecipients(emailRecipients);
+    const channels = parseSlackChannels(slackChannels);
 
     const recipientsCheck = validateEmailRecipients(selectedActions, recipients);
     if (!recipientsCheck.ok) {
       setFormError(recipientsCheck.error ?? "Invalid email recipients.");
+      return;
+    }
+    const channelsCheck = validateSlackChannels(selectedActions, channels);
+    if (!channelsCheck.ok) {
+      setFormError(channelsCheck.error ?? "Invalid Slack channels.");
       return;
     }
     setFormError(null);
@@ -209,6 +221,7 @@ export default function EditCorrelationRulePage() {
       group_by: parseGroupBy(groupBy),
       actions: selectedActions,
       email_recipients: emailSelected ? recipients : [],
+      slack_channels: slackSelected ? channels : [],
     };
 
     try {
@@ -582,6 +595,25 @@ export default function EditCorrelationRulePage() {
                   <p className="text-xs text-slate-500">
                     Comma-separated addresses. Required while “Send Email” is
                     selected.
+                  </p>
+                </div>
+              )}
+
+              {slackSelected && (
+                <div className="flex flex-col gap-1.5 mt-1 animate-fadeIn">
+                  <label className="text-xs font-semibold text-slate-400">
+                    Slack channels
+                  </label>
+                  <input
+                    type="text"
+                    value={slackChannels}
+                    onChange={(e) => setSlackChannels(e.target.value)}
+                    placeholder="alerts-prod, #alerts-staging"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:border-indigo-500 outline-none transition-colors placeholder:text-slate-600"
+                  />
+                  <p className="text-xs text-slate-500">
+                    Comma-separated channel names or IDs. Required while “Send
+                    Slack” is selected.
                   </p>
                 </div>
               )}

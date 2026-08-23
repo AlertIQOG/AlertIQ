@@ -40,6 +40,12 @@ with engine.begin() as conn:
     conn.execute(
         text(
             "ALTER TABLE correlation_rules "
+            "ADD COLUMN IF NOT EXISTS slack_channels jsonb NOT NULL DEFAULT '[]'::jsonb"
+        )
+    )
+    conn.execute(
+        text(
+            "ALTER TABLE correlation_rules "
             "ADD COLUMN IF NOT EXISTS last_triggered_at timestamptz"
         )
     )

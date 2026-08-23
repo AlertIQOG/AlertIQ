@@ -76,7 +76,7 @@ def update_correlation_rule(
     update_data = body.model_dump(exclude_unset=True)
 
     # Cross-field check on the merged result: a partial update must not leave
-    # the email action without recipients.
+    # the email/slack actions without a destination.
     actions = update_data.get("actions", rule.actions or [])
     recipients = update_data.get("email_recipients", rule.email_recipients or [])
     if "email" in actions and not recipients:
@@ -84,6 +84,16 @@ def update_correlation_rule(
             {
                 "loc": ("body", "email_recipients"),
                 "msg": "The email action requires at least one recipient",
+                "type": "value_error",
+            }
+        ])
+
+    slack_channels = update_data.get("slack_channels", rule.slack_channels or [])
+    if "slack" in actions and not slack_channels:
+        raise RequestValidationError([
+            {
+                "loc": ("body", "slack_channels"),
+                "msg": "The slack action requires at least one channel",
                 "type": "value_error",
             }
         ])

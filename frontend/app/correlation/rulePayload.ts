@@ -198,3 +198,38 @@ export function validateEmailRecipients(
   }
   return { ok: true };
 }
+
+// A Slack channel name (optionally "#"-prefixed) or a channel ID like C0123456789.
+const SLACK_CHANNEL_RE = /^#?[a-zA-Z0-9_-]{1,80}$/;
+
+export function isValidSlackChannel(value: string): boolean {
+  return SLACK_CHANNEL_RE.test(value.trim());
+}
+
+/** Splits, trims, and de-dupes a comma-separated channel list; invalid
+ * entries are kept so validateSlackChannels can flag them specifically. */
+export function parseSlackChannels(input: string): string[] {
+  const channels = input
+    .split(",")
+    .map((channel) => channel.trim())
+    .filter((channel) => channel.length > 0);
+  return Array.from(new Set(channels));
+}
+
+/** Requires >=1 valid channel when "slack" is selected; otherwise a no-op. */
+export function validateSlackChannels(
+  actions: string[],
+  channels: string[],
+): RecipientsValidation {
+  if (!actions.includes("slack")) {
+    return { ok: true };
+  }
+  if (channels.length === 0) {
+    return { ok: false, error: "Add at least one Slack channel." };
+  }
+  const invalid = channels.filter((channel) => !isValidSlackChannel(channel));
+  if (invalid.length > 0) {
+    return { ok: false, error: `Invalid Slack channel: ${invalid.join(", ")}` };
+  }
+  return { ok: true };
+}

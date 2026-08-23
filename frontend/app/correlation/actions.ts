@@ -3,12 +3,13 @@
 // A rule can run one or more actions when it matches:
 //   - "aggregate" → group the matching alerts into a single aggregated alert
 //   - "email"     → send an email notification
+//   - "slack"     → post to a Slack channel
 //
 // The backend expects the selected ids in the `actions` array of the create
 // payload. Keeping the option list and the selection logic here (framework-free)
 // makes both trivially unit-testable and reusable across the form and table.
 
-export type CorrelationActionId = "aggregate" | "email";
+export type CorrelationActionId = "aggregate" | "email" | "slack";
 
 export interface CorrelationActionOption {
   id: CorrelationActionId;
@@ -29,6 +30,12 @@ export const ACTION_OPTIONS: CorrelationActionOption[] = [
     label: "Send Email",
     description: "Notify recipients by email",
     icon: "fas fa-envelope",
+  },
+  {
+    id: "slack",
+    label: "Send Slack",
+    description: "Post to a Slack channel",
+    icon: "fab fa-slack",
   },
 ];
 
