@@ -47,8 +47,10 @@ services:
     restart: always
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
+      # external-url sets the subpath; route-prefix defaults to its path
+      # (/external/prometheus), so Prometheus serves everything under that
+      # prefix and nginx passes the path through unstripped.
       - "--web.external-url=https://alertiq.cs.colman.ac.il/external/prometheus/"
-      - "--web.route-prefix=/"
     ports:
       - "9090:9090"
     volumes:
