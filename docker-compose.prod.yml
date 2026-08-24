@@ -21,3 +21,53 @@ services:
       - "3000:3000"
     depends_on:
       - backend
+
+  # ── Grafana (served under https://alertiq.cs.colman.ac.il/external/grafana/) ──
+  grafana:
+    image: grafana/grafana:11.6.0
+    container_name: alertiq-grafana
+    restart: always
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_SERVER_ROOT_URL: https://alertiq.cs.colman.ac.il/external/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_UNIFIED_ALERTING_ENABLED: "true"
+      GF_ALERTING_ENABLED: "false"
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./backend/grafana/provisioning:/etc/grafana/provisioning
+
+  # ── Prometheus (served under https://alertiq.cs.colman.ac.il/external/prometheus/) ──
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: alertiq-prometheus
+    restart: always
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--web.external-url=https://alertiq.cs.colman.ac.il/external/prometheus/"
+      - "--web.route-prefix=/"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./backend/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./backend/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    depends_on:
+      - alertmanager
+
+  # ── Alertmanager (internal only — forwards to AlertIQ ingest webhook) ──
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertiq-alertmanager
+    restart: always
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./backend/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+
+volumes:
+  grafana_data:
